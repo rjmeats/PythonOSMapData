@@ -32,7 +32,7 @@ def readTarget10x10SquareData(target10x10Square) :
     # The unzipped OS data file produces folders and files which use the target squre name as
     # both upper and lower case, and also via the enclosing 100x100 grid square name
     targetSquareLower = sqInfo['name'].lower()              # E.g. ny12
-    targetSquareUpper = sqInfo['name'].upper()             # E.g. NY12
+    targetSquareUpper = sqInfo['name'].upper()              # E.g. NY12
     gridSquareLower = sqInfo['gridsquare'].lower()          # E.g. ny
 
     # The original zip file provided by OS Open Data is called terr50_gagg_gb.zip. We expect
@@ -148,7 +148,6 @@ def processFileContents(squareName, lines) :
             print("*** No", fn, "field in header for square", squareName, file=sys.stderr)
             return None
     
-
     ## 
     ## Data lines processing
     ##
@@ -163,7 +162,7 @@ def processFileContents(squareName, lines) :
 
     # Store the values in a numpy 2-D array. The file presents the rows ordered with north at the top, so the first line in the
     # file is for the most northerly. We want our numpy array to have [row0,col0] as the south-west corner, so we have to index
-    # the array by the 'inverse' of the row number in the file.
+    # the array by the row number in the file counting up from the bottom.
     a = np.empty([nrows, ncols], dtype=float)
 
     for dataRowNo in range(nrows) :

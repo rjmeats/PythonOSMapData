@@ -13,6 +13,7 @@ import io
 import re
 import zipfile
 import numpy as np
+import time
 
 import nationalgrid as ng
 
@@ -187,7 +188,10 @@ def processFileContents(squareName, lines) :
 if __name__ == "__main__" :
     targetSquareArg = sys.argv[1]
     print("Target grid square:", targetSquareArg)
+
+    startTime = time.time()
     lines = readTarget10x10SquareData(targetSquareArg)
+    print("Read data in", round(time.time() - startTime, 6), "seconds")
 
     if lines == None :
         print("*** Problem extracting data", file=sys.stderr)

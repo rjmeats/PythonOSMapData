@@ -184,39 +184,6 @@ def processFileContents(squareName, lines) :
 
     return headerDict, a
 
-# Generate a few stats about the altitudes in the data for this square
-def analyseAltitudes(aData) :
-
-    print()
-    print("Analyis of altitudes:")
-    
-    # Get an ordered list (1D array) of unique altitude values in the array, and a parallel list of counts for that altitude
-    aUniqueValues, aCounts = np.unique(aData, return_counts=True)
-    print("- cells:", aData.size)
-    print("- unique altitude values:", len(aUniqueValues))
-    print("- altitude values range:", aUniqueValues[0], "-", aUniqueValues[-1], "m")
-    print("- altitude range:", round(aUniqueValues[-1] - aUniqueValues[0], 1), "m")
-    print("- average altitude:", round(np.average(aData), 1), "m")
-
-    # Get details of which altitude value has the most counts. Numpy nonzero returns a 2D array, we just take the first
-    # (usually only) entry
-    mostCommonIndex = np.nonzero(aCounts == max(aCounts))[0][0]
-    print("- most common altitude value:", aUniqueValues[mostCommonIndex], "m :", aCounts[mostCommonIndex], "cases,",
-                round(aCounts[mostCommonIndex]/aData.size * 100, 3), "%")
-
-    # List negative and near zero altitude frequencies, and frequencies greater than one percent
-    onePercentCount = aData.size / 100
-    print("- cases below 1m or over 1% of the total:")
-    printCount = 0
-    for altIndex in range(len(aUniqueValues)) :
-        alt = aUniqueValues[altIndex]
-        if alt < 1 or aCounts[altIndex] >= onePercentCount:
-            #print("  ", alt, aCounts[altIndex], round(aCounts[altIndex]*100/aData.size, 2), "%")
-            print("  {0:5.1f}m  {1:5d}  = {2:5.1f} %".format(alt, aCounts[altIndex], round(aCounts[altIndex]*100/aData.size, 2)))
-            printCount += 1
-    if printCount == 0 :
-        print("  [None]")
-
 ####################################
 # Standalone main
 ####################################
@@ -247,7 +214,8 @@ if __name__ == "__main__" :
                 print(header)
                 print()
                 print(aData[::-1,:])
-                analyseAltitudes(aData)
+                import altitudestats
+                altitudestats.analyseAltitudes(targetSquareArg, aData)
             else :
                 print("Problem processing file contents", file=sys.stderr)
 

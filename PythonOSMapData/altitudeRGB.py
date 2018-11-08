@@ -32,7 +32,8 @@ maxRange = max(fixedColours[i][0] for i in range(len(fixedColours)))
 
 knownAltitudeRGBMappings = {}
 
-def getRGBForAltitude(altitude, waterIndicator, minAltitude, maxAltitude) :
+# Convert an altitude value to RGB
+def getRGBForAltitude(altitude, waterIndicator=0, minAltitude=0, maxAltitude=1350) :
 
     rgb = [0x00, 0x00, 0x00]
 
@@ -80,7 +81,6 @@ def getRGBForAltitude(altitude, waterIndicator, minAltitude, maxAltitude) :
     return rgb
 
 # Main program dumps out colour scale info
-
 if __name__ == "__main__" :
 
     for i in range(len(fixedColours)) :

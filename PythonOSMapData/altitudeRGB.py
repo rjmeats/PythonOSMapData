@@ -25,7 +25,14 @@ fixedColours2 = [
     [1350,      (0xB3, 0x59, 0x00) ],       # Ben Nevis = 1345 m
 ]
 
-fixedColours = fixedColours2
+fixedColours3 = [
+    # Altitude(m) RGB for that altitude
+    [-10,       (0xFF, 0xFF, 0xEE) ],          
+    [0,         (0xFF, 0xFF, 0xFF) ],          
+    [1350,      (0x00, 0x00, 0x00) ],       # Ben Nevis = 1345 m
+]
+
+fixedColours = fixedColours3
 
 minRange = min(fixedColours[i][0] for i in range(len(fixedColours)))
 maxRange = max(fixedColours[i][0] for i in range(len(fixedColours)))

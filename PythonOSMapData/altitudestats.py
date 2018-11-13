@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import altitudeRGB
 
 # Output a few stats about the altitudes in the data array for this square
-def analyseAltitudes(squareName, aData) :
+def analyseAltitudes(colourScheme, squareName, aData) :
 
     np.set_printoptions(linewidth=200)
 
@@ -54,7 +54,11 @@ def analyseAltitudes(squareName, aData) :
     # Set up colours to be used for each altitude in our histogram chart
     colours = []
     for alt in bins :
-        rgb = altitudeRGB.getRGBForAltitude(alt)
+        if alt >= 0 :
+            rgb = colourScheme.getRGBForLandAltitude(alt)
+        else :
+            rgb = colourScheme.getRGBForWaterAltitude(alt)
+
         # Convert to '#rrgbb' string format
         colours.append( "#{0:02x}{1:02x}{2:02x}".format(int(rgb[0]), int(rgb[1]), int(rgb[2])) )
 
@@ -78,4 +82,3 @@ def analyseAltitudes(squareName, aData) :
     plt.xlabel('Altitude (m)')
     plt.title("Distribution of altitudes in National Grid square " + squareName.upper())
 
-    plt.show()

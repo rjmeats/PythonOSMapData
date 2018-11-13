@@ -214,8 +214,10 @@ if __name__ == "__main__" :
                 print(header)
                 print()
                 print(aData[::-1,:])
+                import altitudeRGB
                 import altitudestats
-                altitudestats.analyseAltitudes(targetSquareArg, aData)
+                colourScheme = altitudeRGB.getColourScheme("standard")
+                altitudestats.analyseAltitudes(colourScheme, targetSquareArg, aData)
             else :
                 print("Problem processing file contents", file=sys.stderr)
 

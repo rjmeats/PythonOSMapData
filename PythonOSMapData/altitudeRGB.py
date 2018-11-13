@@ -1,6 +1,82 @@
 # RGB Colouring based on altitude
 
-fixedColours1 = [
+import sys
+
+class AltitudeColouring :
+
+    def __init__(self, landMappings, waterColour, scalingRange=None) :
+        self.landMappings = landMappings
+        self.waterColour = waterColour
+        self.scalingRange = scalingRange    # min and max of them values to use for scaling to full range
+        self.derive()
+
+    def derive(self) :
+        self.altitudes = [self.landMappings[i][0] for i in range(len(self.landMappings))]
+        self.minRange = min(self.altitudes)
+        self.maxRange = max(self.altitudes)
+        self.positiveScalingFactor = (self.maxRange-0.1)/self.scalingRange[1] if self.scalingRange != None else 1
+        self.negativeScalingFactor = (self.minRange-0.1)/self.scalingRange[0] if self.scalingRange != None else 1
+        self.knownAltitudeRGBMappings = {}
+
+    def dump(self) :
+        for i in range(len(self.landMappings)) :
+            print(self.landMappings[i])
+        print("Min / Max:", self.minRange, "/", self.maxRange)
+        print("Pos / Neg scaling factors:", self.positiveScalingFactor, "/", self.negativeScalingFactor)
+
+    # Convert an altitude value to RGB
+    def getRGBForWaterAltitude(self, altitude) :
+        return self.waterColour
+
+    def getRGBForLandAltitude(self, altitude) :
+
+        rgb = [0x00, 0x00, 0x00]
+
+        # Scale the actual altitude to a range 0-maxAltitude if the value is positive
+        if altitude >= 0 :
+            effectiveAltitude = altitude * self.positiveScalingFactor
+        else :
+            effectiveAltitude = altitude * self.negativeScalingFactor
+
+        if effectiveAltitude in self.knownAltitudeRGBMappings:
+            # Already calculated the colour for this value
+            rgb = self.knownAltitudeRGBMappings[effectiveAltitude]
+        elif effectiveAltitude < self.minRange or effectiveAltitude > self.maxRange :
+            # Doesn't make sense. Shows as black.
+            rgb = [0x00, 0x00, 0x00]
+        else :
+            # Find where this altitude value fits in the fixed colours list, and produce
+            # an interpolated colour for it from the fixed colour entries just before and after
+            higherAltitudeIndex = -1
+            for fixedColourIndex in range(len(self.landMappings)) :
+                if effectiveAltitude < self.landMappings[fixedColourIndex][0] :          # <= ????
+                    higherAltitudeIndex = fixedColourIndex
+                    break
+
+            if higherAltitudeIndex == -1 :
+                # Altitude is higher than the maximum - doesn't make sense. Shows as black.
+                rgb = [0xFF, 0x00, 0x00]
+            elif higherAltitudeIndex == 0 :
+                # Altitude is lower than the minimum - doesn't make sense. Shows as black.
+                rgb = [0x00, 0xFF, 0x00]
+            else :
+                # Pull out the altitude and RGB values from the table for the entries bracketing our value
+                lowerAlt, lowerRGB = self.landMappings[higherAltitudeIndex-1] 
+                higherAlt, higherRGB = self.landMappings[higherAltitudeIndex]
+                RGBdiffs = (lowerRGB[0]-higherRGB[0], lowerRGB[1]-higherRGB[1], lowerRGB[2]-higherRGB[2])
+                factor = (effectiveAltitude - lowerAlt)/(higherAlt-lowerAlt)
+                rgb[0] = lowerRGB[0] - (RGBdiffs[0] * factor)
+                rgb[1] = lowerRGB[1] - (RGBdiffs[1] * factor)
+                rgb[2] = lowerRGB[2] - (RGBdiffs[2] * factor)
+
+            # Save the value for re-use in subsequent calls
+            self.knownAltitudeRGBMappings[effectiveAltitude] = rgb
+
+        return rgb
+
+# End of class
+
+standardSchemeColours = [
     # Altitude(m) RGB for that altitude
     [-10,       (0xFF, 0xFF, 0xEE) ],          
     [0,         (0xFF, 0xFF, 0x99) ],          
@@ -13,7 +89,9 @@ fixedColours1 = [
     [1350,      (0xB3, 0x59, 0x00) ],       # Ben Nevis = 1345 m
 ]
 
-fixedColours2 = [
+standardScheme = AltitudeColouring(standardSchemeColours, (0xCC, 0xE5, 0xFF))
+
+trialSchemeColours = [
     # Altitude(m) RGB for that altitude
     [-10,       (0xFF, 0xFF, 0xEE) ],          
     [0,         (0xCC, 0xFF, 0xCC) ],          
@@ -25,92 +103,87 @@ fixedColours2 = [
     [1350,      (0xB3, 0x59, 0x00) ],       # Ben Nevis = 1345 m
 ]
 
-fixedColours3 = [
+trialScheme = AltitudeColouring(trialSchemeColours, (0xCC, 0xE5, 0xFF))
+
+greySchemeColours = [
     # Altitude(m) RGB for that altitude
     [-10,       (0xFF, 0xFF, 0xEE) ],          
     [0,         (0xFF, 0xFF, 0xFF) ],          
     [1350,      (0x00, 0x00, 0x00) ],       # Ben Nevis = 1345 m
 ]
 
-fixedColours = fixedColours3
+greyScheme = AltitudeColouring(greySchemeColours, (0xCC, 0xE5, 0xFF))
 
-minRange = min(fixedColours[i][0] for i in range(len(fixedColours)))
-maxRange = max(fixedColours[i][0] for i in range(len(fixedColours)))
+redSchemeColours = [
+    # Altitude(m) RGB for that altitude
+    [-10,       (0xFF, 0xFF, 0xEE) ],          
+    [0,         (0xFF, 0xFF, 0xFF) ],          
+    [1350,      (0xFF, 0x00, 0x00) ],       # Ben Nevis = 1345 m
+]
 
-knownAltitudeRGBMappings = {}
+redScheme = AltitudeColouring(redSchemeColours, (0xCC, 0xE5, 0xFF))
 
-# Convert an altitude value to RGB
-def getRGBForAltitude(altitude, waterIndicator=0, minAltitude=0, maxAltitude=1350) :
+colourSchemes = {
+    "standard"  :   standardScheme,
+    "trial" :       trialScheme,
+    "greyscale" :   greyScheme,
+    "red"       :   redScheme
+}
 
-    rgb = [0x00, 0x00, 0x00]
 
-    # Scale the actual altitude to a range 0-maxAltitude if the value is positive
-    effectiveAltitude = altitude * (maxRange-0.1)/maxAltitude if altitude > 0 else altitude
+def getColourScheme(schemeName, scalingRange=None) :
 
-    if waterIndicator > 0 :
-        rgb = [0xDC, 0xF5, 0xF0]
-        rgb = [0x99, 0xCC, 0xFF]
-        rgb = [0xCC, 0xE5, 0xFF]
-    elif altitude < -10 :
-        # Doesn't make sense. Shows as black.
-        rgb = [0x00, 0x00, 0x00]
-    elif effectiveAltitude in knownAltitudeRGBMappings:
-        # Already calculated the colour for this value
-        rgb = knownAltitudeRGBMappings[effectiveAltitude]
+    if schemeName in colourSchemes :
+        baseScheme = colourSchemes[schemeName]
     else :
-        # Find where this altitude value fits in the fixed colours list, and produce
-        # an interpolated colour for it from the fixed colour entries just before and after
-        higherAltitudeIndex = -1
-        for fixedColourIndex in range(len(fixedColours)) :
-            if effectiveAltitude < fixedColours[fixedColourIndex][0] :          # <= ????
-                higherAltitudeIndex = fixedColourIndex
-                break
+        print("*** Unknown colour scheme:", schemeName, file=sys.stderr)
+        baseScheme = colourSchemes["standard"]
 
-        if higherAltitudeIndex == -1 :
-            # Altitude is higher than the maximum - doesn't make sense. Shows as black.
-            rgb = [0x00, 0x00, 0x00]
-        elif higherAltitudeIndex == 0 :
-            # Altitude is lower than the minimum - doesn't make sense. Shows as black.
-            rgb = [0x00, 0x00, 0x00]
-        else :
-            # Pull out the altitude and RGB values from the table for the entries bracketing our value
-            lowerAlt, lowerRGB = fixedColours[higherAltitudeIndex-1] 
-            higherAlt, higherRGB = fixedColours[higherAltitudeIndex]
-            RGBdiffs = (lowerRGB[0]-higherRGB[0], lowerRGB[1]-higherRGB[1], lowerRGB[2]-higherRGB[2])
-            factor = (effectiveAltitude - lowerAlt)/(higherAlt-lowerAlt)
-            rgb[0] = lowerRGB[0] - (RGBdiffs[0] * factor)
-            rgb[1] = lowerRGB[1] - (RGBdiffs[1] * factor)
-            rgb[2] = lowerRGB[2] - (RGBdiffs[2] * factor)
+    if scalingRange == None :
+        return baseScheme
+    else :
+        return AltitudeColouring(baseScheme.landMappings, baseScheme.waterColour, scalingRange)
 
-        # Save the value for re-use in subsequent calls
-        knownAltitudeRGBMappings[effectiveAltitude] = rgb
-
-    return rgb
 
 # Main program dumps out colour scale info
 if __name__ == "__main__" :
-
-    for i in range(len(fixedColours)) :
-        print(fixedColours[i])
-    
-    print("Min / Max:", minRange, "/", maxRange)
 
     # Show colours v altitudes mapping using matplotlib
     import numpy as np
     import matplotlib.pyplot as plt
 
-    # Negative altitude indexes are treated as being indexed from end of array. So
-    # these are plotted at right hand side. Add a margin to allow them to be 
-    # visibly separated in the plot from the positive values.
-    plotHeight = 1000
-    argb = np.empty([plotHeight, abs(minRange) + maxRange + 100, 3], dtype=int)
+    figureNo = 0
+    for schemeName in colourSchemes.keys() :
+        print("Scheme:", schemeName)
+        scheme = colourSchemes[schemeName]
+        scheme.dump()
 
-    for altitude in range(minRange, maxRange+1) :
-        rgb = getRGBForAltitude(altitude, 0, minRange, maxRange)
-        for i in range(argb.shape[0]) :
-            argb[i, altitude] = rgb
-        
+        # Negative altitude indexes are treated as being indexed from end of array. So
+        # these are plotted at right hand side. Add a margin to allow them to be 
+        # visibly separated in the plot from the positive values.
+        plotHeight = 1000
+        minRange = -100
+        maxRange = 1800
+        argb = np.empty([plotHeight, maxRange + 100 + abs(minRange), 3], dtype=int)
 
-    fig = plt.imshow(argb, origin='lower')
+        for altitude in range(maxRange+1) :
+            rgb = scheme.getRGBForLandAltitude(altitude)
+            for i in range(argb.shape[0]) :
+                argb[i, altitude] = rgb
+
+        # This shows -ve altitudes on the right of the plot (i.e. column offsets from the end of the np array)
+        # with altitudes lower than the the minimum or higher than the maximum for the scheme shown as a black
+        for altitude in range(minRange, 0) :
+            rgb = scheme.getRGBForLandAltitude(altitude)
+            for i in range(argb.shape[0]) :
+                argb[i, altitude] = rgb
+
+        figureNo += 1
+        fig = plt.imshow(argb, origin='lower')
+
+        plt.gca().axes.get_yaxis().set_visible(False)
+        plt.xlabel('Altitude (m)')
+        plt.title("'" + schemeName + "'" + " colour scheme")
+
+    # Show the figures, one per colouring scheme at the end.
     plt.show()
-

@@ -7,7 +7,7 @@ class AltitudeColouring :
     def __init__(self, landMappings, waterColour, scalingRange=None) :
         self.landMappings = landMappings
         self.waterColour = waterColour
-        self.scalingRange = scalingRange    # min and max of them values to use for scaling to full range
+        self.scalingRange = scalingRange    # min and max of values to use for scaling to full range
         self.derive()
 
     def derive(self) :
@@ -18,16 +18,19 @@ class AltitudeColouring :
         self.negativeScalingFactor = (self.minRange-0.1)/self.scalingRange[0] if self.scalingRange != None else 1
         self.knownAltitudeRGBMappings = {}
 
+    def getScaledEquivalent(self, scalingRange) :
+        return AltitudeColouring(self.landMappings, self.waterColour, scalingRange)
+
     def dump(self) :
         for i in range(len(self.landMappings)) :
             print(self.landMappings[i])
         print("Min / Max:", self.minRange, "/", self.maxRange)
         print("Pos / Neg scaling factors:", self.positiveScalingFactor, "/", self.negativeScalingFactor)
 
-    # Convert an altitude value to RGB
     def getRGBForWaterAltitude(self, altitude) :
         return self.waterColour
 
+    # Convert an altitude value to RGB
     def getRGBForLandAltitude(self, altitude) :
 
         rgb = [0x00, 0x00, 0x00]
@@ -123,11 +126,53 @@ redSchemeColours = [
 
 redScheme = AltitudeColouring(redSchemeColours, (0xCC, 0xE5, 0xFF))
 
+# Colour scheme class that allows easy reading of an altitude indicator via Matplot cursor
+class NumericAltitudeColouring(AltitudeColouring) :
+
+    def __init__(self) :
+        pass
+
+    def getScaledEquivalent(self, scalingRange) :
+        return NumericAltitudeColouring()
+
+    def dump(self) :
+        pass
+
+    def getRGB(self, altitude) :
+        absa = abs(altitude)
+        # Use R value for 100s of metrs and G for the tens and units, B for sign indicator
+        if altitude >= 0 :
+            return (absa // 100, absa % 100, 0)
+        elif absa > 999 :
+            # Off the map
+            return (255, 255, 255)
+        elif absa < 2.55 :
+            return (absa * 100, absa, 255)
+        elif absa < 10 :
+            return (absa * 25, absa, 255)
+        elif absa < 25.5 :
+            return (absa * 10, absa, 255)
+        else :
+            # Assume nothing more than -25.5m. Enlarge scale to make small diffs easier to see.
+            return (absa, absa, 255)
+
+    def getRGBForWaterAltitude(self, altitude) :
+        return self.getRGB(altitude)
+
+    # Convert an altitude value to RGB
+    def getRGBForLandAltitude(self, altitude) :
+        return self.getRGB(altitude)
+
+
+numericScheme = NumericAltitudeColouring()
+
+
 colourSchemes = {
     "standard"  :   standardScheme,
-    "trial" :       trialScheme,
+    "trial"     :   trialScheme,
     "greyscale" :   greyScheme,
-    "red"       :   redScheme
+    "red"       :   redScheme,
+    "numeric"   :   numericScheme
 }
 
 
@@ -142,7 +187,8 @@ def getColourScheme(schemeName, scalingRange=None) :
     if scalingRange == None :
         return baseScheme
     else :
-        return AltitudeColouring(baseScheme.landMappings, baseScheme.waterColour, scalingRange)
+        return baseScheme.getScaledEquivalent(scalingRange)
+        #return AltitudeColouring(baseScheme.landMappings, baseScheme.waterColour, scalingRange)
 
 
 # Main program dumps out colour scale info
@@ -179,6 +225,7 @@ if __name__ == "__main__" :
                 argb[i, altitude] = rgb
 
         figureNo += 1
+        plt.figure(figureNo)
         fig = plt.imshow(argb, origin='lower')
 
         plt.gca().axes.get_yaxis().set_visible(False)

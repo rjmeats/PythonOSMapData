@@ -44,7 +44,7 @@ def analyseAltitudes(colourScheme, squareName, aData) :
     minAlt = aUniqueValues[0]
     bins = [] if minAlt > 0 else [minAlt]       # If there are negative altitudes, put these all in one big bin
     binEdgeAlt = 0
-    binSize = 100 if maxAlt > 200 else 20
+    binSize = 100 if maxAlt > 300 else 50
     
     # Make sure there's a bin edge after the maximum altitude
     while binEdgeAlt - maxAlt <= 2*binSize:
@@ -80,5 +80,5 @@ def analyseAltitudes(colourScheme, squareName, aData) :
 
     plt.ylabel('Cases')
     plt.xlabel('Altitude (m)')
-    plt.title("Distribution of altitudes in National Grid square " + squareName.upper())
+    plt.title("Distribution of altitudes in National Grid square(s) " + squareName.upper())
 

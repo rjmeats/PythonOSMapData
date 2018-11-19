@@ -1,8 +1,6 @@
 # Module for manipulating OS national grid squares and squares within them.
 #
 
-## t_.... names ????
-
 import re
 import numpy as np
 
@@ -37,21 +35,20 @@ class GridSquare :
 
         # Values set up by separate calls to indicate whether this square is a real square or
         # just one filling out the overall grid, not containing any GB land.
-        self.used = False
+        self.isRealSquare = False
 
-    def setUsed(self, isUsed=True) :
-        self.isUsed = isUsed
+    def setRealSquare(self, isRealSquare=True) :
+        self.isRealSquare = isRealSquare
 
     def getName(self) :
         return self.name
 
     # For diagnostic printing out
     def getPrintGridString(self) :
-        if self.isUsed :
+        if self.isRealSquare :
             return "{0:s}=({1:02d},{2:02d})".format(self.name, self.northingIndex, self.eastingIndex)
         else :
             return "{0:10.10s}".format("")
-
 
 # Set up two structures of national grid squares:
 #
@@ -103,45 +100,96 @@ def generateGridSquares():
     
     return a, d
 
-# Assign further info to grid squares:
-# - are they 'real' squares, or just ones around the edge containing no GB land, produced to make an overall rectangle
+# Determine whether a grid square is a 'real' square, containing GB land of some sort, or just an excess square around the edge, present
+# only to produce an overall rectangular grid. The excess squares can be all-sea or contain only non-GB land.
 # Assignments based on visual inspection of file:///C:/Users/owner/Documents/Development/PythonOSMapData/OSDocs/guide-to-nationalgrid.pdf
 
-def assignGridInfo(a, d) :
+def assignGridInfo(arrayGrid, dictGrid) :
+    # Array to control how individual grid squares are classified
     squareStatus = [ 
                         # Squares-to-exclude lists
-                        ("S", "-ABFGLQ"), 
+                        ("S", "-ABCFGLQ"),                  # SC == Isle of Man
                         ("T", "-BCDEHJKNOPSTUWXYZ"),
-                        ("N", "-QV"),
-                        ("H", "-ABCDEFGHJKLMNQRSV"),
+                        ("N", "-EPQV"),
+                        ("H", "-ABCDEFGHJKLMNOQRSV"),       # H covers Orkneys and Shetland
                         # Squares-to-include lists
-                        ("O", "+V"),        # Only OV is real
-                        ("J", "+")          # No J- squares are real
+                        ("O", "+V"),        # Only OV is real, and very marginally so.
+                        ("J", "+")          # No J- squares are real land.
                     ]
 
     for (letter1, lettersList) in squareStatus :
         for C in "ABCDEFGHJKLMNOPQRSTUVWXYZ" :
-            sq = d[letter1 + C]
+            # Find the grid square in the dictionary based on the two-letter name, and determined if it should be
+            # marked as 'real' or not
+            sq = dictGrid[letter1 + C]
             if lettersList[0] == "-" :
                 # An artificial square, mark it
-                sq.setUsed(C not in lettersList)
+                sq.setRealSquare(C not in lettersList)
             elif lettersList[0] == "+" :
                 # A real squares
-                sq.setUsed(C in lettersList)
-
-
-# Just show square name for full grid ????
-def printFullGrid(a) :
-    np.set_printoptions(linewidth=200, formatter = { 'object' : GridSquare.getPrintGridString})
-    print(a[::-1,:])
-
-aGridSquares, dictGridSquares = generateGridSquares()
-assignGridInfo(aGridSquares, dictGridSquares)
+                sq.setRealSquare(C in lettersList)
 
 
 # End of initialisation
 
 # ===========================================================================
+
+# Module initialisation code to populate two global data items:
+# aGridSquares - an array of GridSquare objects, indexed by northing, easting, 0,0 being the south-west corder of the grid (SV)
+# dictGridSquares - a dictionary of GridSquare objects indexed by grid square name (upper case)
+
+aGridSquares, dictGridSquares = generateGridSquares()
+assignGridInfo(aGridSquares, dictGridSquares)
+
+# Diagnostics - show square names in full grid array
+def printFullGrid(a) :
+    np.set_printoptions(linewidth=200, formatter = { 'object' : GridSquare.getPrintGridString})
+    print(a[::-1,:])
+
+# Diagnostics - plot national grid array 
+def displayNationalGridPlot() :
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(6, 8))
+
+    # Plot using a 100x100 scaled up version of the array so that we can show the axis tick points as being at
+    # the southwest corner of the grid square rather than in the middle of it.
+    scale = 100         
+    # Where in each scaled-up square to put the text label:
+    ntextLabelPos = 45
+    etextLabelPos = 50
+
+    a = np.empty((aGridSquares.shape[0]*scale, aGridSquares.shape[1]*scale, 3), dtype=int)
+    for nscaled in range(a.shape[0]) :
+        for escaled in range(a.shape[1]) :
+            # Which national grid square are we looking at ?us
+            n = nscaled // scale
+            e = escaled // scale
+            squareColour = (0x99,0xff,0x66) if aGridSquares[n,e].isRealSquare else (0x99, 0xCC, 0xFF)
+            a[nscaled,escaled] = squareColour
+            if nscaled % scale == ntextLabelPos and escaled % scale == etextLabelPos  :
+                textcolour = "black" if aGridSquares[n,e].isRealSquare else "gray"
+                ax.text(escaled, nscaled, aGridSquares[n,e].name, ha="center", va="center", color=textcolour)   # NB Note swapped over axes!
+
+    # Plot axes using our main grid array indexes, aligned to the bottom left (south-west) corner
+    xtickPoints = list(range(0, a.shape[1], scale))
+    xtickLabels = list(range(len(xtickPoints)))
+    ytickPoints = list(range(0, a.shape[0], scale))
+    ytickLabels = list(range(len(ytickPoints)))
+
+    ax.set_xticks(xtickPoints)
+    ax.set_xticklabels(xtickLabels)
+    ax.set_yticks(ytickPoints)
+    ax.set_yticklabels(ytickLabels)
+
+    plt.grid(True, color="gray", linewidth=1, linestyle="solid")
+    im = ax.imshow(a, origin='lower')    
+    plt.title("National Grid Squares")
+    plt.show()
+
+# ===========================================================================
+# ===========================================================================
+
+# Methods for external callers
 
 # Is this a valid 100x100 two-letter main grid square identifier ? If so, return a dictionary of its properties; if not, return None.
 def checkGridSquareName(squareName) :
@@ -219,67 +267,31 @@ def get10x10SquareReached(base10x10square, e_inc, n_inc) :
 
     return check10x10SquareName(name)
 
-
-def nextSquareNorth(t_sq) :
+# Get the name of the grid square north of this one (or an empty string if we're already on the edge)
+def nextSquareNorth(squareName) :
     nextSqName = ""
-    if t_sq.upper() in dictGridSquares :
-        sq = dictGridSquares[t_sq.upper()]
+    if squareName.upper() in dictGridSquares :
+        sq = dictGridSquares[squareName.upper()]
         if sq.northingIndex+1 < aGridSquares.shape[0] :
             nextSq = aGridSquares[sq.northingIndex+1, sq.eastingIndex]            
             nextSqName = nextSq.name
     return nextSqName
 
-def nextSquareEast(t_sq) :
+# Get the name of the grid square east of this one (or an empty string if we're already on the edge)
+def nextSquareEast(squareName) :
     nextSqName = ""
-    if t_sq.upper() in dictGridSquares :
-        sq = dictGridSquares[t_sq.upper()]
+    if squareName.upper() in dictGridSquares :
+        sq = dictGridSquares[squareName.upper()]
         if sq.eastingIndex+1 < aGridSquares.shape[1] :
             nextSq = aGridSquares[sq.northingIndex, sq.eastingIndex+1]            
             nextSqName = nextSq.name
     return nextSqName
 
+# ===========================================================================
+# ===========================================================================
+
+# main method for diagnostics - show the national grid as a plot
+
 if __name__ == "__main__" :
-    print("Checking NG ...")
-    printFullGrid(aGridSquares)
 
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots()
-
-    # Plot using a 100x100 scaled up version of the array so that we can show the axis tick points as being at
-    # the southwest corner of the grid square rather than in the middle of it.
-    scale = 100         
-    # Where in each scaled-up square to put the text label:
-    ntextLabelPos = 45
-    etextLabelPos = 50
-
-    a = np.empty((aGridSquares.shape[0]*scale, aGridSquares.shape[1]*scale, 3), dtype=int)
-    for nscaled in range(a.shape[0]) :
-        for escaled in range(a.shape[1]) :
-            # Which national grid square are we looking at ?
-            n = nscaled // scale
-            e = escaled // scale
-            squareColour = (0x99,0xff,0x66) if aGridSquares[n,e].isUsed else (0x99, 0xCC, 0xFF)
-            a[nscaled,escaled] = squareColour
-            if nscaled % scale == ntextLabelPos and escaled % scale == etextLabelPos  :
-                textcolour = "black" if aGridSquares[n,e].isUsed else "gray"
-                ax.text(escaled, nscaled, aGridSquares[n,e].name, ha="center", va="center", color=textcolour)   # NB Note swapped over axes!
-
-    # Plot axes using our main grid array indexes, aligned to the bottom left (south-west) corner
-    xtickPoints = list(range(0, a.shape[1], scale))
-    xtickLabels = list(range(len(xtickPoints)))
-    ytickPoints = list(range(0, a.shape[0], scale))
-    ytickLabels = list(range(len(ytickPoints)))
-
-    ax.set_xticks(xtickPoints)
-    ax.set_xticklabels(xtickLabels)
-    ax.set_yticks(ytickPoints)
-    ax.set_yticklabels(ytickLabels)
-
-    # Put in a light grey grid to show grid square boundaries
-    plt.grid(True, color="gray", linewidth=1, linestyle="solid")
-
-    im = ax.imshow(a, origin='lower')
-    
-    plt.title("National Grid Squares")
-    plt.show()
+    displayNationalGridPlot()

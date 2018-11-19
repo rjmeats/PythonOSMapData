@@ -245,19 +245,41 @@ if __name__ == "__main__" :
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots()
-    a = np.empty((aGridSquares.shape[0], aGridSquares.shape[1], 3), dtype=int)
-    for n in range(aGridSquares.shape[0]) :
-        for e in range(aGridSquares.shape[1]) :
-            sqcolour = (0x99,0xff,0x66) if aGridSquares[n,e].isUsed else (0x99, 0xCC, 0xFF)
-            textcolour = "black" if aGridSquares[n,e].isUsed else "gray"
-            a[n,e] = sqcolour
-            ax.text(e, n, aGridSquares[n,e].name, ha="center", va="center", color=textcolour)   # NB Note swapped over axes!
 
-    #ax.set_xticks(np.arange(aGridSquares.shape[1]))
-    #ax.set_yticks(np.arange(aGridSquares.shape[0]))
-    #ax.axhline()
-    #ax.axvline()
+    # Plot using a 100x100 scaled up version of the array so that we can show the axis tick points as being at
+    # the southwest corner of the grid square rather than in the middle of it.
+    scale = 100         
+    # Where in each scaled-up square to put the text label:
+    ntextLabelPos = 45
+    etextLabelPos = 50
+
+    a = np.empty((aGridSquares.shape[0]*scale, aGridSquares.shape[1]*scale, 3), dtype=int)
+    for nscaled in range(a.shape[0]) :
+        for escaled in range(a.shape[1]) :
+            # Which national grid square are we looking at ?
+            n = nscaled // scale
+            e = escaled // scale
+            squareColour = (0x99,0xff,0x66) if aGridSquares[n,e].isUsed else (0x99, 0xCC, 0xFF)
+            a[nscaled,escaled] = squareColour
+            if nscaled % scale == ntextLabelPos and escaled % scale == etextLabelPos  :
+                textcolour = "black" if aGridSquares[n,e].isUsed else "gray"
+                ax.text(escaled, nscaled, aGridSquares[n,e].name, ha="center", va="center", color=textcolour)   # NB Note swapped over axes!
+
+    # Plot axes using our main grid array indexes, aligned to the bottom left (south-west) corner
+    xtickPoints = list(range(0, a.shape[1], scale))
+    xtickLabels = list(range(len(xtickPoints)))
+    ytickPoints = list(range(0, a.shape[0], scale))
+    ytickLabels = list(range(len(ytickPoints)))
+
+    ax.set_xticks(xtickPoints)
+    ax.set_xticklabels(xtickLabels)
+    ax.set_yticks(ytickPoints)
+    ax.set_yticklabels(ytickLabels)
+
+    # Put in a light grey grid to show grid square boundaries
+    plt.grid(True, color="gray", linewidth=1, linestyle="solid")
 
     im = ax.imshow(a, origin='lower')
+    
     plt.title("National Grid Squares")
     plt.show()

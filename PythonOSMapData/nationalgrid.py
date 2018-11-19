@@ -241,3 +241,23 @@ def nextSquareEast(t_sq) :
 if __name__ == "__main__" :
     print("Checking NG ...")
     printFullGrid(aGridSquares)
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    a = np.empty((aGridSquares.shape[0], aGridSquares.shape[1], 3), dtype=int)
+    for n in range(aGridSquares.shape[0]) :
+        for e in range(aGridSquares.shape[1]) :
+            sqcolour = (0x99,0xff,0x66) if aGridSquares[n,e].isUsed else (0x99, 0xCC, 0xFF)
+            textcolour = "black" if aGridSquares[n,e].isUsed else "gray"
+            a[n,e] = sqcolour
+            ax.text(e, n, aGridSquares[n,e].name, ha="center", va="center", color=textcolour)   # NB Note swapped over axes!
+
+    #ax.set_xticks(np.arange(aGridSquares.shape[1]))
+    #ax.set_yticks(np.arange(aGridSquares.shape[0]))
+    #ax.axhline()
+    #ax.axvline()
+
+    im = ax.imshow(a, origin='lower')
+    plt.title("National Grid Squares")
+    plt.show()

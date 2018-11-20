@@ -141,6 +141,8 @@ def assignGridInfo(arrayGrid, dictGrid) :
 aGridSquares, dictGridSquares = generateGridSquares()
 assignGridInfo(aGridSquares, dictGridSquares)
 
+# ===========================================================================
+
 # Diagnostics - show square names in full grid array
 def printFullGrid(a) :
     np.set_printoptions(linewidth=200, formatter = { 'object' : GridSquare.getPrintGridString})
@@ -186,6 +188,10 @@ def displayNationalGridPlot() :
     plt.title("National Grid Squares")
     plt.show()
 
+# 'main' handling - show the national grid as a plot
+if __name__ == "__main__" :
+    displayNationalGridPlot()
+
 # ===========================================================================
 # ===========================================================================
 
@@ -207,12 +213,36 @@ def checkGridSquareName(squareName) :
     # ???? Include a full 6-digit easting and northing for the south-west corner of the square ?
     return dict
 
+# Get the name of the grid square north of this one (or an empty string if we're already on the edge)
+def nextSquareNorth(squareName) :
+    nextSqName = ""
+    if squareName.upper() in dictGridSquares :
+        sq = dictGridSquares[squareName.upper()]
+        if sq.northingIndex+1 < aGridSquares.shape[0] :
+            nextSq = aGridSquares[sq.northingIndex+1, sq.eastingIndex]            
+            nextSqName = nextSq.name
+    return nextSqName
+
+# Get the name of the grid square east of this one (or an empty string if we're already on the edge)
+def nextSquareEast(squareName) :
+    nextSqName = ""
+    if squareName.upper() in dictGridSquares :
+        sq = dictGridSquares[squareName.upper()]
+        if sq.eastingIndex+1 < aGridSquares.shape[1] :
+            nextSq = aGridSquares[sq.northingIndex, sq.eastingIndex+1]            
+            nextSqName = nextSq.name
+    return nextSqName
+
+# ===========================================================================
+
+# Methods relating to 10km x 10km squares within the main National Grid squares (which are 100x100), 
+# which are identified by XXen  where XX is the National Grid square, e is the easting digit and n is the northing
+# digit. E.g. NY12
+
 # Is this a valid 10x10 square identifier ? If so, return a dictionary of its properties; if not, return None.
 # Check that the target 10x10km square is specified in the expected format, and uses the expected letters for
 # a square in the Great Britain national grid.
 #
-# And these squares are split into 100 10x10km squares via an Easting 0-9and a Northing 0-9 value, both 0-9, 
-# e.g. NY12
 
 def check10x10SquareName(squareName) :
     r = re.compile("([A-Z][A-Z])([0-9])([0-9])", flags=re.IGNORECASE)
@@ -267,31 +297,3 @@ def get10x10SquareReached(base10x10square, e_inc, n_inc) :
 
     return check10x10SquareName(name)
 
-# Get the name of the grid square north of this one (or an empty string if we're already on the edge)
-def nextSquareNorth(squareName) :
-    nextSqName = ""
-    if squareName.upper() in dictGridSquares :
-        sq = dictGridSquares[squareName.upper()]
-        if sq.northingIndex+1 < aGridSquares.shape[0] :
-            nextSq = aGridSquares[sq.northingIndex+1, sq.eastingIndex]            
-            nextSqName = nextSq.name
-    return nextSqName
-
-# Get the name of the grid square east of this one (or an empty string if we're already on the edge)
-def nextSquareEast(squareName) :
-    nextSqName = ""
-    if squareName.upper() in dictGridSquares :
-        sq = dictGridSquares[squareName.upper()]
-        if sq.eastingIndex+1 < aGridSquares.shape[1] :
-            nextSq = aGridSquares[sq.northingIndex, sq.eastingIndex+1]            
-            nextSqName = nextSq.name
-    return nextSqName
-
-# ===========================================================================
-# ===========================================================================
-
-# main method for diagnostics - show the national grid as a plot
-
-if __name__ == "__main__" :
-
-    displayNationalGridPlot()

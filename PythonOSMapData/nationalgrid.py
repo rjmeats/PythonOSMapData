@@ -275,22 +275,22 @@ def check10x10SquareName(squareName) :
 
 def get10x10SquareReached(base10x10square, e_inc, n_inc) :
 
-    t_sq = base10x10square['gridsquare']
-    t_e = base10x10square['east'] + e_inc
-    t_n = base10x10square['north'] + n_inc
+    gridSquare = base10x10square['gridsquare']
+    e = base10x10square['east'] + e_inc
+    n = base10x10square['north'] + n_inc
 
-    t_e = t_e % 10
-    eastSquares = (base10x10square['east'] + e_inc - t_e) // 10
+    e = e % 10
+    eastSquares = (base10x10square['east'] + e_inc - e) // 10
     for i in range(eastSquares) :
-        t_sq = nextSquareEast(t_sq)
+        gridSquare = nextSquareEast(gridSquare)
 
-    t_n = t_n % 10
-    northSquares = (base10x10square['north'] + n_inc - t_n) // 10
+    n = n % 10
+    northSquares = (base10x10square['north'] + n_inc - n) // 10
     for i in range(northSquares) :
-        t_sq = nextSquareNorth(t_sq)
+        gridSquare = nextSquareNorth(gridSquare)
 
-    if len(t_sq) != 0 :
-        name = "{0:s}{1:n}{2:n}".format(t_sq, t_e, t_n)
+    if len(gridSquare) != 0 :
+        name = "{0:s}{1:n}{2:n}".format(gridSquare, e, n)
     else :
         # Gone beyond the grid
         return None

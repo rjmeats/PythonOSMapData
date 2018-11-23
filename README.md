@@ -5,11 +5,14 @@ Initially for generation of images showing land topography based on the altitude
 
 The OS data does not indicate the location of lakes, sea, etc, so the program attempts to deduce this. Still work-in-progress, finding some false lakes, especially in flat coastal areas.
 
-## Example 1 ##
+## Examples ##
 
-The OS National Grid sqaare **NY**, which covers much of the Lake District 
+The OS National Grid square **NY**, which covers much of the Lake District and beyond
 
 ![ss0](PythonOSMapData/examples/NY.png)
 
+Grid square **NG**, which covers the Isle of Skye, shown using a red-based colour-scheme. 
+
+![ss0](PythonOSMapData/examples/NG_1x1_red.png)
 
 

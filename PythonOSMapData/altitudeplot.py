@@ -96,6 +96,7 @@ def main(basisSquareName, dimensions, colourSchemeName) :
         print("Altitude processing took:", round(time.time() - startTime, 3), "seconds")
 
         title = basisSquareName.upper() + " " + dimensions
+        title = title.strip()
         if colourSchemeName == "" :
             colourSchemeName = "standard"
         colourScheme = altitudeRGB.getColourScheme(colourSchemeName, (summaryDict['minAltitude'], summaryDict['maxAltitude']))

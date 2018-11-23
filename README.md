@@ -16,3 +16,6 @@ Grid square **NG**, which covers the Isle of Skye, shown using a red-based colou
 ![ss0](PythonOSMapData/examples/NG_1x1_red.png)
 
 
+*[Contains OS data © Crown copyright and database right (2018)](https://www.ordnancesurvey.co.uk/business-and-government/licensing/using-creating-data-with-os-products/os-opendata.html)*
+
+

@@ -11,6 +11,5 @@ The OS National Grid sqaare **NY**, which covers much of the Lake District
 
 ![ss0](PythonOSMapData/examples/NY.png)
 
-## Screenshot showing diagnostic deshot3.png)
 
 

@@ -15,7 +15,7 @@ class AltitudeColouring :
         self.minRange = min(self.altitudes)
         self.maxRange = max(self.altitudes)
         self.positiveScalingFactor = (self.maxRange-0.1)/self.scalingRange[1] if self.scalingRange != None else 1
-        self.negativeScalingFactor = (self.minRange-0.1)/self.scalingRange[0] if self.scalingRange != None else 1
+        self.negativeScalingFactor = (abs(self.minRange)-0.1)/abs(self.scalingRange[0]) if self.scalingRange != None else 1
         self.knownAltitudeRGBMappings = {}
 
     def getScaledEquivalent(self, scalingRange) :

@@ -44,7 +44,16 @@ def analyseAltitudes(colourScheme, squareName, aData) :
     minAlt = aUniqueValues[0]
     bins = [] if minAlt > 0 else [minAlt]       # If there are negative altitudes, put these all in one big bin
     binEdgeAlt = 0
-    binSize = 100 if maxAlt > 300 else 50
+
+    binSize = 10
+    if maxAlt < 100 :
+        binSize = 10
+    elif maxAlt < 200 :
+        binSize = 20
+    elif maxAlt < 300 :
+        binSize = 50
+    else :
+        binSize = 100
     
     # Make sure there's a bin edge after the maximum altitude
     while binEdgeAlt - maxAlt <= 2*binSize:

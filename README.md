@@ -11,7 +11,7 @@ The OS National Grid square **NY**, which covers much of the Lake District and b
 
 ![ss0](PythonOSMapData/examples/NY.png)
 
-Grid square **NG**, which covers the Isle of Skye, shown using a red-based colour-scheme. 
+Grid square **NG**, which covers the Isle of Skye, shown using e.g. a red-based colour-scheme. 
 
 ![ss0](PythonOSMapData/examples/NG_1x1_red.png)
 

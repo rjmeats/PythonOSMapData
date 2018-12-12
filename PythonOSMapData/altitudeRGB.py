@@ -162,6 +162,15 @@ yellowSchemeColours = [
 
 yellowScheme = AltitudeColouring(yellowSchemeColours, (0xCC, 0xE5, 0xFF))
 
+magentaSchemeColours = [
+    # Altitude(m) RGB for that altitude
+    [-10,       (0xFF, 0xFF, 0xEE) ],          
+    [0,         (0xFF, 0xFF, 0xFF) ],          
+    [1350,      (0xFF, 0x00, 0xFF) ],       # Ben Nevis = 1345 m
+]
+
+magentaScheme = AltitudeColouring(magentaSchemeColours, (0xCC, 0xE5, 0xFF))
+
 # Colour scheme class that allows easy reading of an altitude indicator via Matplot cursor
 class NumericAltitudeColouring(AltitudeColouring) :
 
@@ -212,6 +221,7 @@ colourSchemes = {
     "green"     :   greenScheme,
     "cyan"      :   cyanScheme,
     "yellow"    :   yellowScheme,
+    "magenta"   :   magentaScheme,
     "numeric"   :   numericScheme
 }
 

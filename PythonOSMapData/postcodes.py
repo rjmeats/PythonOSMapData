@@ -4,6 +4,12 @@ import sys
 import zipfile
 import pandas as pd
 
+/**
+https://en.wikipedia.org/wiki/List_of_postcode_districts_in_the_United_Kingdom
+https://en.wikipedia.org/wiki/List_of_postcode_areas_in_the_United_Kingdom
+https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-november-2019
+**/
+
 def unpackZipFile(baseFile) :
     z = zipfile.ZipFile(baseFile, mode='r')
 

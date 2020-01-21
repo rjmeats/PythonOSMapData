@@ -33,23 +33,46 @@ def processFiles(tmpDir, detail=False) :
                 matchingFilenames.append(entry.name)
         print(f'Found {len(matchingFilenames)} CSV files to process ...')
 
+        # Joining multiple CSVs together by reading one by one then copy/appending to a target DataFrame. Very slow.
+        # https://stackoverflow.com/questions/20906474/import-multiple-csv-files-into-pandas-and-concatenate-into-one-dataframe
+        # has some alternatives that may be faster.
+        # Also https://engineering.hexacta.com/pandas-by-example-columns-547696ff78dd
         totalCodes = 0
-        fileCount = 0
         combined_df = pd.DataFrame()
-        for filename in matchingFilenames :
+        for (fileCount, filename) in enumerate(matchingFilenames, start=1) :
+            # if fileCount > 30 : break
             fullfilename = maindatafolder + filename
-            fileCount += 1
-            df = pd.read_csv(fullfilename, header=None)
-            combined_df = combined_df.append(df)
+            postcodeArea = filename.replace('.csv', '').upper()
+
+            columnNames = ['PC', 'PQ', 'EA', 'NO', 'CY', 'RH', 'LH', 'CC', 'DC', 'WC']
+            columnNames = [ 'Postcode', 
+                            'Quality', 'Eastings', 'Northings', 'Country_code', 
+                            'NHS_regional_HA_code', 'NHS_HA_code', 
+                            'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
+            df = pd.read_csv(fullfilename, header=None, names=columnNames).assign(PostcodeArea=postcodeArea)
+            # Re-order columns and drop NHS ones
+            reorderedColumnNames = [ 'PostcodeArea', 'Postcode', 
+                            'Quality', 'Eastings', 'Northings', 'Country_code', 
+                            'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
+            df = df[reorderedColumnNames]
+
+            #df = pd.read_csv(fullfilename, header=None).insert(loc=0, column='PostcodeArea', value=postcodeArea) # Doesn't work - None returned
+            combined_df = combined_df.append(df, ignore_index=True)    # NB Need to avoid copy index values in, to avoid repeats.
             (numrows, numcols) = df.shape
-            if numcols != 10 :
+            if numcols != 10+1-2 :
                 print(f'*** Unexpected number of columns ({numcols}) in CSV file {filename}', file=sys.stderr)
+                print(df.info())
+                print(df.head())
                 return
             totalCodes += numrows
-            if fileCount % 10 == 0 : print(f'{filename} : {numrows} codes : {combined_df.shape[0]} total rows')
+            if fileCount % 10 == 0 : print(f'.. {fileCount:3d} files : {filename:>6.6s} {postcodeArea:>2.2s}: {numrows:5d} post codes : {combined_df.shape[0]:7d} total rows ..')
 
         (numrows, numcols) = combined_df.shape
-        print(f'.. found {combined_df.shape[0]} post codes')
+        print(f'.. found {combined_df.shape[0]} post codes in {len(matchingFilenames)} CSV files')
+
+        print(combined_df.info())
+        print(combined_df.head())
+        print(combined_df.tail())
     else :
         print(f'*** No /Data/CSV/ folder found at: {maindatafolder}', file=sys.stderr)
 

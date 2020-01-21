@@ -1,2 +1,7 @@
 OSData
 OSDocs
+pngs
+__pycache__
+.pytest_cache
+.vscode
+todo.txt

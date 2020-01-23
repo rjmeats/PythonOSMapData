@@ -11,6 +11,7 @@ https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-november-201
 """
 
 def unpackZipFile(baseFile, tmpDir, detail=False) :
+    """ Unzips the data file under a temporary directory. Checks basic sub-directories are as expected."""
     z = zipfile.ZipFile(baseFile, mode='r')
 
     zinfolist = z.infolist()
@@ -24,19 +25,32 @@ def unpackZipFile(baseFile, tmpDir, detail=False) :
     z.extractall(path=tmpDir)
     z.close()
 
-CSVcolumnNames1 = ['PC', 'PQ', 'EA', 'NO', 'CY', 'RH', 'LH', 'CC', 'DC', 'WC']
-CSVcolumnNames2 = [ 'Postcode', 
+#############################################################################################
+# Items relating to the columns of in the main CSV file and resulting dataframe
+
+# Column names are provided in a separate file, with two lines - we expect the values below in these lines
+csvColumnNamesFile = 'Doc/Code-Point_Open_Column_Headers.csv'
+csvColumnNames1 = ['PC', 'PQ', 'EA', 'NO', 'CY', 'RH', 'LH', 'CC', 'DC', 'WC']
+csvColumnNames2 = [ 'Postcode', 
                 'Positional_quality_indicator', 'Eastings', 'Northings', 'Country_code', 
                 'NHS_regional_HA_code', 'NHS_HA_code', 
                 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
 
+# Define which of the above column names from line 2 we want to rename in the final dataframe 
 renamedDFColumns = {'Positional_quality_indicator' :'Quality'}
-# Re-order columns and drop NHS ones for the output dataframe
+
+# Define columns names and order for the final dataframe. NB we've dropped the NHS ones
 outputDFColumnNames = [ 'Postcode', 'PostcodeArea', 
                 'Quality', 'Eastings', 'Northings', 'Country_code', 
                 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
 
+# Where the main data files reside
+mainCSVDataDir = 'Data/CSV/'
+
+#############################################################################################
+
 def listsOfStringsMatch(l1, l2) :
+    """Do two lists of strings contain the same items in the same order, ignoring leading/trailing whitespace ?"""
     if(len(l1) != len(l2)) : return False
     for i in range(len(l1)) :
         if l1[i].strip() != l2[i].strip() : return False
@@ -45,7 +59,7 @@ def listsOfStringsMatch(l1, l2) :
 def checkColumns(tmpDir, detail=False) :
     """ Check that the file defining column headers contains what we expect. """
     columnsOK = False
-    columnsFile = tmpDir + '/Doc/Code-Point_Open_Column_Headers.csv'
+    columnsFile = tmpDir + '/' + csvColumnNamesFile
     if not os.path.isfile(columnsFile) :
         print(f"*** No columns definition file found at {columnsFile}", file=sys.stderr)
         columnsOK = False
@@ -55,42 +69,46 @@ def checkColumns(tmpDir, detail=False) :
             line1list = line1.split(sep=',')
             line2 = f.readline().strip()
             line2list = line2.split(sep=',')
-            if not listsOfStringsMatch(CSVcolumnNames1, line1list) :
+            if not listsOfStringsMatch(csvColumnNames1, line1list) :
                 columnsOK = False
-                print(f"*** Columns definition file line 1 not as expected: {line1}", file=sys.stderr)
-            elif not listsOfStringsMatch(CSVcolumnNames2, line2list) :
+                print(f"*** Columns definition file {csvColumnNamesFile} line 1 not as expected: {line1}", file=sys.stderr)
+            elif not listsOfStringsMatch(csvColumnNames2, line2list) :
                 columnsOK = False
-                print(f"*** Columns definition file line 2 not as expected: {line2}", file=sys.stderr)
+                print(f"*** Columns definition file {csvColumnNamesFile} line 2 not as expected: {line2}", file=sys.stderr)
             else :
                 columnsOK = True
-                print(f"Columns definition file has expected columns")
+                print(f"Columns definition file {csvColumnNamesFile} has the expected columns ...")
 
     return columnsOK
 
-def processFiles(tmpDir, detail=False) :
+#############################################################################################
+
+def loadFilesIntoDataFrame(tmpDir, detail=False) :
+    """ Combines the individual data csv files for each postcode area into a single dataframe. Returns the dataframe,
+    or any empty dataframe if there is an error."""
+
     if not checkColumns(tmpDir, detail) :
+        # Column names not as expected.
         return pd.DataFrame()
 
-    maindatafolder = tmpDir + '/Data/CSV/'
-    if not os.path.isdir(maindatafolder) :
-        print(f'*** No /Data/CSV/ folder found at: {maindatafolder}', file=sys.stderr)
+    # Generate a list of csv files to process
+    mainDataDir = tmpDir + '/' + mainCSVDataDir
+    if not os.path.isdir(mainDataDir) :
+        print(f'*** No {mainCSVDataDir} directory found under: {mainDataDir}', file=sys.stderr)
         return pd.DataFrame()
-
-    matchingFilenames = [entry.name for entry in os.scandir(maindatafolder) if entry.is_file() and entry.name.endswith('.csv')]
+    matchingFilenames = [entry.name for entry in os.scandir(mainDataDir) if entry.is_file() and entry.name.endswith('.csv')]
     print(f'Found {len(matchingFilenames)} CSV files to process ...')
 
-    # Joining multiple CSVs together by reading one by one then copy/appending to a target DataFrame. Very slow.
-    # https://stackoverflow.com/questions/20906474/import-multiple-csv-files-into-pandas-and-concatenate-into-one-dataframe
-    # has some alternatives that may be faster.
-    # Also https://engineering.hexacta.com/pandas-by-example-columns-547696ff78dd
-    totalCodes = 0
+    # Build up a list of dataframes, one per CSV file, with the set of desired output column names.
+    # There is one CSV file for each postcode area, with the filled called xx.csv where xx is the postcode area (in lower case).
+    totalPostcodes = 0
     dfList = []
     for (fileCount, filename) in enumerate(matchingFilenames, start=1) :
         #if fileCount > 30 : break
-        fullfilename = maindatafolder + filename
+        fullFilename = mainDataDir + filename
         postcodeArea = filename.replace('.csv', '').upper()
 
-        df = pd.read_csv(fullfilename, header=None, names=CSVcolumnNames2)   \
+        df = pd.read_csv(fullFilename, header=None, names=csvColumnNames2)   \
                 .rename(columns=renamedDFColumns) \
                 .assign(PostcodeArea=postcodeArea)[outputDFColumnNames]
         (numrows, numcols) = df.shape
@@ -99,16 +117,67 @@ def processFiles(tmpDir, detail=False) :
             print(df.info())
             print(df.head())
             return
-        totalCodes += numrows
-        # This combination line takes ~34 out of ~40 seconds of the processing time of this function. Much quicker to use concat at end
-        # combined_df = combined_df.append(df, ignore_index=True)    # NB Need to avoid copy index values in, to avoid repeats.
+        totalPostcodes += numrows
         dfList.append(df)
-        if fileCount % 10 == 0 : print(f'.. {fileCount:3d} files : {filename:>6.6s} {postcodeArea:>2.2s}: {numrows:5d} post codes : {totalCodes:7d} total rows ..')
+        if fileCount % 10 == 0 : print(f'.. {fileCount:3d} files : {filename:>6.6s} {postcodeArea:>2.2s}: {numrows:5d} postcodes : {totalPostcodes:7d} total ..')
 
-    # Much faster to concatenate full set of collected dataframes than appending one-by-one
+    # Much faster to concatenate full set of collected dataframes than appending one-by-one.
+    # Need to avoid copy index values in, to avoid repeats.
     combined_df = pd.concat(dfList, ignore_index=True)
-    print(f'.. found {combined_df.shape[0]} post codes in {len(matchingFilenames)} CSV files')
+    print(f'.. found {combined_df.shape[0]} postcodes in {len(matchingFilenames)} CSV files')
     return combined_df
+
+#############################################################################################
+
+def displayBasicInfo(df) :
+    """ See what the basic pandas info calls show about the dataframe. """
+
+    print()
+    print('###################################################')
+    print()
+    print(f'type(df) : {type(df)}') 
+    print(f'df.shape : {df.shape}')
+    print()
+    print('################## df ##################')
+    print()
+    print(df)
+    print()
+    print('################## df.dtypes ##################')
+    print()
+    print(df.dtypes)
+    print()
+    print('################## df.info() ##################')
+    print()
+    print(df.info())
+    print()
+    print('################## df.head() ##################')
+    print()
+    print(df.head())
+    print()
+    print('################## df.tail() ##################')
+    print()
+    print(df.tail())
+    print()
+    print('################## df.index ##################')
+    print()
+    print(df.index)
+    print()
+    print('################## df.columns ##################')
+    print()
+    print(df.columns)
+    print()
+    print('################## df.describe() ##################')
+    print()
+    print(df.describe())
+    print()
+    print('################## df.count() ##################')
+    print()
+    print(df.count())
+    print()
+    print('###################################################')
+
+
+#############################################################################################
 
 def main(args) :
     baseFile = r"./OSData/PostCodes/codepo_gb.zip"
@@ -121,16 +190,14 @@ def main(args) :
     unpackZipFile(baseFile, tmpDir)
 
     startTime = pd.Timestamp.now()
-    df = processFiles(tmpDir)
+    df = loadFilesIntoDataFrame(tmpDir)
     took = pd.Timestamp.now()-startTime
-    if df.empty :
+    if not df.empty :
+        print(f'Took {took.total_seconds()} seconds to load data files into a dataframe')
+    else :
         return
 
-    print(f'Took {took.total_seconds()} seconds to load data files into a data frame')
-    print()
-    print(df.info())
-    print(df.head())
-    print(df.tail())
+    displayBasicInfo(df)
 
 if __name__ == '__main__' :
     main(sys.argv)

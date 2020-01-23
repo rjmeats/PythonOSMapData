@@ -179,6 +179,47 @@ def displayBasicInfo(df) :
 
 #############################################################################################
 
+def aggregate(df) :
+
+    dfAreaCounts = df.groupby('PostcodeArea').count()
+    print(dfAreaCounts)
+    print()
+
+    groupByColumns = [ 'PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 
+                        'Admin_district_code', 'Admin_ward_code' ]
+
+    for groupByColumn in groupByColumns :
+        dfAreaCounts = df[['Postcode', groupByColumn]].groupby(groupByColumn).count()
+        print()
+        print(f'############### Grouping by {groupByColumn} ###############')
+        print()
+        print(f'Shape is {dfAreaCounts.shape}')
+        print()
+        print(dfAreaCounts)
+
+    # Just PostcodeArea = shows that just a list of distinct values is returned when grouping a column with itself.
+    dfAreaCounts = df[['PostcodeArea']].groupby('PostcodeArea').count()
+    print()
+    print(f'############### Grouping by PostcodeArea with itself ###############')
+    print()
+    print(f'Shape is {dfAreaCounts.shape}')
+    print()
+    print(dfAreaCounts)
+
+    # Just Postcode = shows many distinct values there are
+    dfAreaCounts = df[['Postcode']].groupby('Postcode').count()
+    print()
+    print(f'############### Grouping by Postcode with itself ###############')
+    print()
+    print(f'Shape is {dfAreaCounts.shape}')
+    print()
+    print(dfAreaCounts)
+
+    print(df.shape, dfAreaCounts.shape)
+
+
+#############################################################################################
+
 def main(args) :
     baseFile = r"./OSData/PostCodes/codepo_gb.zip"
     tmpDir = os.path.dirname(baseFile) + '/tmp'
@@ -197,7 +238,9 @@ def main(args) :
     else :
         return
 
-    displayBasicInfo(df)
+    # displayBasicInfo(df)
+
+    aggregate(df)
 
 if __name__ == '__main__' :
     main(sys.argv)

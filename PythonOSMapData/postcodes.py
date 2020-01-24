@@ -104,7 +104,7 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
     totalPostcodes = 0
     dfList = []
     for (fileCount, filename) in enumerate(matchingFilenames, start=1) :
-        #if fileCount > 30 : break
+        if fileCount > 30 : break
         fullFilename = mainDataDir + filename
         postcodeArea = filename.replace('.csv', '').upper()
 
@@ -241,9 +241,30 @@ def main(args) :
     else :
         return
 
-    displayBasicInfo(df)
+    #displayBasicInfo(df)
+    #aggregate(df)
 
-    aggregate(df)
+    countryCodeDict = {
+        'E92000001' : 'England',
+        'S92000003' : 'Scotland',
+        'W92000004' : 'Wales',
+        'N92000002' : 'N. Ireland'
+    }
+    dfCountryCodes = pd.DataFrame({ 'code' : list(countryCodeDict.keys()), 'value' : list(countryCodeDict.values()) })
+    print(dfCountryCodes)
+
+    dfFirst10 = df[0:10]
+    print(dfFirst10)
+    dfJoin = pd.merge(df, dfCountryCodes, left_on='Country_code', right_on='code', how='left')
+    print(dfJoin)
+    print(dfJoin.groupby('value').count())
+
+    # Group by 'value' counts by Country code value - E, S, W
+    # but counts depend on a non Nan value - only index 'Postcode' has this (can we confirm this ?). So what is the 
+    # best way to count this ?
+    # Also, the join produces extra columns called 'code' and 'value' on the end - not great names, and 'code' is just
+    # a repeat of Country_code.
+    # How does the above work if reading in e.g. county-codes from XLS (into a dataframe directly - what does that look like ?d)
 
 if __name__ == '__main__' :
     main(sys.argv)

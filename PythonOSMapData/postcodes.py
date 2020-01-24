@@ -113,6 +113,7 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
                 .assign(PostcodeArea=postcodeArea)[outputDFColumnNames]
         (numrows, numcols) = df.shape
         if numcols != len(outputDFColumnNames) :
+            print()
             print(f'*** Unexpected number of columns ({numcols}) in CSV file {filename}', file=sys.stderr)
             print(df.info())
             print(df.head())
@@ -125,6 +126,15 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
     # Need to avoid copy index values in, to avoid repeats.
     combined_df = pd.concat(dfList, ignore_index=True)
     print(f'.. found {combined_df.shape[0]} postcodes in {len(matchingFilenames)} CSV files')
+
+    # Make Postcode the index instead of the auto-assigned range. As part of this, check there are no duplicate postcodes.
+    try :
+        combined_df = combined_df.set_index('Postcode', verify_integrity=True)
+    except ValueError as e :
+        print()
+        print(f'*** Found duplicate postcodes: {e}')
+        return pd.DataFrame()
+
     return combined_df
 
 #############################################################################################
@@ -181,21 +191,26 @@ def displayBasicInfo(df) :
 
 def aggregate(df) :
 
-    dfAreaCounts = df.groupby('PostcodeArea').count()
-    print(dfAreaCounts)
+    print(f'############### Grouping by PostcodeArea, all columns ###############')
     print()
+    dfAreaCounts = df.groupby('PostcodeArea').count()
+    print(f'Shape is {dfAreaCounts.shape}')
+    print()
+    print(dfAreaCounts)
 
     groupByColumns = [ 'PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 
                         'Admin_district_code', 'Admin_ward_code' ]
 
+    # Just show counts of each distinct value, column by column
     for groupByColumn in groupByColumns :
-        dfAreaCounts = df[['Postcode', groupByColumn]].groupby(groupByColumn).count()
+        # Need a specific column to count, otherwise just get list of group-by-column values with no counts.
         print()
-        print(f'############### Grouping by {groupByColumn} ###############')
+        print(f'############### Grouping by {groupByColumn}, count only ###############')
         print()
-        print(f'Shape is {dfAreaCounts.shape}')
+        dfDistinctColumnValueCounts = df.assign(count=1)[[groupByColumn, 'count']].groupby(groupByColumn).count()
+        print(f'Shape is {dfDistinctColumnValueCounts.shape}')
         print()
-        print(dfAreaCounts)
+        print(dfDistinctColumnValueCounts)
 
     # Just PostcodeArea = shows that just a list of distinct values is returned when grouping a column with itself.
     dfAreaCounts = df[['PostcodeArea']].groupby('PostcodeArea').count()
@@ -205,18 +220,6 @@ def aggregate(df) :
     print(f'Shape is {dfAreaCounts.shape}')
     print()
     print(dfAreaCounts)
-
-    # Just Postcode = shows many distinct values there are
-    dfAreaCounts = df[['Postcode']].groupby('Postcode').count()
-    print()
-    print(f'############### Grouping by Postcode with itself ###############')
-    print()
-    print(f'Shape is {dfAreaCounts.shape}')
-    print()
-    print(dfAreaCounts)
-
-    print(df.shape, dfAreaCounts.shape)
-
 
 #############################################################################################
 
@@ -238,7 +241,7 @@ def main(args) :
     else :
         return
 
-    # displayBasicInfo(df)
+    displayBasicInfo(df)
 
     aggregate(df)
 

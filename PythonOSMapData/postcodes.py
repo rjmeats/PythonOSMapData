@@ -10,9 +10,9 @@ https://en.wikipedia.org/wiki/List_of_postcode_areas_in_the_United_Kingdom
 https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-november-2019
 """
 
-def unpackZipFile(baseFile, tmpDir, detail=False) :
+def unpackZipFile(OSZipFile, tmpDir, detail=False) :
     """ Unzips the data file under a temporary directory. Checks basic sub-directories are as expected."""
-    z = zipfile.ZipFile(baseFile, mode='r')
+    z = zipfile.ZipFile(OSZipFile, mode='r')
 
     zinfolist = z.infolist()
     for zinfo in zinfolist :
@@ -21,7 +21,7 @@ def unpackZipFile(baseFile, tmpDir, detail=False) :
         else :
             print("*** Unexpected extract location found:", zinfo.filename, file=sys.stderr)
 
-    print(f'Extracting zip file {baseFile} under {tmpDir} ...')
+    print(f'Extracting zip file {OSZipFile} under {tmpDir} ...')
     z.extractall(path=tmpDir)
     z.close()
 
@@ -104,7 +104,7 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
     totalPostcodes = 0
     dfList = []
     for (fileCount, filename) in enumerate(matchingFilenames, start=1) :
-        if fileCount > 30 : break
+        if fileCount > 1000 : break
         fullFilename = mainDataDir + filename
         postcodeArea = filename.replace('.csv', '').upper()
 
@@ -211,6 +211,9 @@ def aggregate(df) :
         print(f'Shape is {dfDistinctColumnValueCounts.shape}')
         print()
         print(dfDistinctColumnValueCounts)
+        print(dfDistinctColumnValueCounts[0])
+        print(dfDistinctColumnValueCounts[1])
+        
 
     # Just PostcodeArea = shows that just a list of distinct values is returned when grouping a column with itself.
     dfAreaCounts = df[['PostcodeArea']].groupby('PostcodeArea').count()
@@ -223,27 +226,50 @@ def aggregate(df) :
 
 #############################################################################################
 
-def main(args) :
-    baseFile = r"./OSData/PostCodes/codepo_gb.zip"
-    tmpDir = os.path.dirname(baseFile) + '/tmp'
+from tkinter import Tk, Canvas, mainloop
 
-    if not os.path.isfile(baseFile) :
-        print("*** No base file found:", baseFile, file=sys.stderr)
-        return
+def tk(df) :
+    master = Tk()
 
-    unpackZipFile(baseFile, tmpDir)
+    canvas_width = 800
+    canvas_height = 400
+    w = Canvas(master, 
+            width=canvas_width,
+            height=canvas_height)
+    w.pack()
 
-    startTime = pd.Timestamp.now()
-    df = loadFilesIntoDataFrame(tmpDir)
-    took = pd.Timestamp.now()-startTime
-    if not df.empty :
-        print(f'Took {took.total_seconds()} seconds to load data files into a dataframe')
-    else :
-        return
+    y = int(canvas_height / 2)
+    #w.create_line(0, y, canvas_width, y)
 
-    #displayBasicInfo(df)
-    #aggregate(df)
+    for x in range(0, 100, 4) :
+        for y in range(0, 100, 4) :
+            w.create_oval(x,y,x,y, fill="red", outline="#fb0", width=1)
 
+    mainloop()
+
+# The postcode_district_area_lists.xls file has lists of postcode areas, which should match the 'xx' part
+# of the 'xx.csv' postcode data file names. The file comes from here rather than the OS:
+# https://www.postcodeaddressfile.co.uk/downloads/free_products/postcode_district_area_lists.xls
+
+def loadPostcodeAreasFile(postcodeAreasFile) :
+
+    # NB Needed to 'pip install xlrd' for this to work.
+    dfAreas = pd.read_excel(postcodeAreasFile, sheet_name='Postcode Areas', header=0)
+    print()
+    print(f'.. found {dfAreas.shape[0]} postcode areas in the areas spreadsheet')
+
+    # Check the columns are what we expect:
+    if dfAreas.columns[0] != 'Postcode Area' :
+        print(f'*** Unexpected column heading {dfAreas.columns[0]} for postcode areas file ')
+        return pd.DataFrame()
+
+    if dfAreas.columns[1] != 'Post Town' :
+        print(f'*** Unexpected column heading {dfAreas.columns[1]} for postcode areas file ')
+        return pd.DataFrame()
+
+    return dfAreas
+
+def checkCountryCodes(df) :
     countryCodeDict = {
         'E92000001' : 'England',
         'S92000003' : 'Scotland',
@@ -257,7 +283,7 @@ def main(args) :
     print(dfFirst10)
     dfJoin = pd.merge(df, dfCountryCodes, left_on='Country_code', right_on='code', how='left')
     print(dfJoin)
-    print(dfJoin.groupby('value').count())
+    print(dfJoin.groupby(['Country_code','value']).count())
 
     # Group by 'value' counts by Country code value - E, S, W
     # but counts depend on a non Nan value - only index 'Postcode' has this (can we confirm this ?). So what is the 
@@ -265,6 +291,105 @@ def main(args) :
     # Also, the join produces extra columns called 'code' and 'value' on the end - not great names, and 'code' is just
     # a repeat of Country_code.
     # How does the above work if reading in e.g. county-codes from XLS (into a dataframe directly - what does that look like ?d)
+
+def checkAreaCodes(df, dfAreas) :
+
+    print()
+    print('Checking area codes ...')
+    print()
+    dfFirst10 = df[0:10]
+    print(dfFirst10)
+    dfJoin = pd.merge(df, dfAreas, left_on='PostcodeArea', right_on='Postcode Area', how='left')
+    print()
+    print('Initial join')
+    print()
+    print(dfJoin)
+    print()
+    # Replace NaN values with '??' in the join-related columns, for ease of grouping by missing values.
+    dfJoin.fillna({'Postcode Area' : '??', 'Post Town' : '??', 'PostcodeArea' : '??'}, inplace=True)
+    print()
+    print('Filled join')
+    print()
+    print(dfJoin)
+    print()
+    # Post Code/Town is defined, but no actual postcodes. Outer join just produces one row, so no
+    # real need to group
+    print(dfJoin[dfJoin['PostcodeArea']  == '??'])      
+    print()
+
+    # PostcodeArea from xx.csv is not in the spreadsheet, so can't assign a Post Code Town. If there are any cases,
+    # will be 100s of them for that xx, so use grouping.
+    dfG = dfJoin[dfJoin['Postcode Area']  == '??'].groupby([dfJoin['PostcodeArea'],dfJoin['Postcode Area'],dfJoin['Post Town']]).count()
+
+    print()
+    print('Grouped by Postcode area fields - no Post Town lookup:')
+    print()
+    print(dfG)
+    print()
+
+    dfG = dfJoin[dfJoin['Postcode Area']  != '??'].groupby([dfJoin['PostcodeArea'],dfJoin['Postcode Area'],dfJoin['Post Town']]).count()
+
+    print()
+    print('Grouped by Postcode area fields - Post Town lookup exists:')
+    print()
+    print(dfG)
+    print()
+
+    # Find info about areas in main data not in lookup
+    # Eek numpy/pandas issue https://stackoverflow.com/questions/40659212/futurewarning-elementwise-comparison-failed-returning-scalar-but-in-the-futur
+    # May be because the groupby dataframe is a different type of data structure, so its columns are int offsets into the source ?
+    # See https://realpython.com/pandas-groupby/
+    # If so would explain the comparison issues.
+    # https://pandas.pydata.org/pandas-docs/stable/reference/groupby.html
+    # 'Having' clause equivalent ?
+#    print(dfG.info())
+    #dfNoLookup = dfG['PostcodeArea'] == '??'
+    
+#    print('No lookup:')
+#    print(dfNoLookup)
+    #print(dfG[dfNoLookup])
+
+    # Probably need to do filtering on joined df, with na's replaced, then do grouping on result ?
+
+    # Other consideration is checking that post town codes (and other lookups) are unique in source data.
+
+
+
+
+def main(args) :
+    OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
+    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists_x.xls"
+    tmpDir = os.path.dirname(OSZipFile) + '/tmp'
+
+    if not os.path.isfile(OSZipFile) :
+        print("*** No OS zip file found:", OSZipFile, file=sys.stderr)
+        return
+
+    if not os.path.isfile(postcodeAreasFile) :
+        print("*** No ONS postcode areas spreadsheet file found:", postcodeAreasFile, file=sys.stderr)
+        return
+
+    unpackZipFile(OSZipFile, tmpDir)
+
+    startTime = pd.Timestamp.now()
+    df = loadFilesIntoDataFrame(tmpDir)
+    took = pd.Timestamp.now()-startTime
+    if not df.empty :
+        print(f'Took {took.total_seconds()} seconds to load data files into a dataframe')
+    else :
+        return
+
+    dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
+    if dfAreas.empty :
+        return
+
+    #displayBasicInfo(df)
+    #aggregate(df)
+
+    # checkCountryCodes(df)
+    checkAreaCodes(df, dfAreas)
+
+    #tk(df)
 
 if __name__ == '__main__' :
     main(sys.argv)

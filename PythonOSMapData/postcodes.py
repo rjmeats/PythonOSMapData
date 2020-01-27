@@ -282,6 +282,96 @@ def loadPostcodeAreasFile(postcodeAreasFile) :
 
     return dfAreas
 
+def stripWordCounty(s) :
+    return s.replace(" County", "").strip()
+
+def loadCountyCodes(tmpDir) :
+
+    codeslistFile = tmpDir + r"/Doc/codelist.xlsx"
+
+    if not os.path.isfile(codeslistFile) :
+        print("*** No OS code list spreadsheet file found:", codeslistFile, file=sys.stderr)
+        return pd.DataFrame()
+
+    # NB Needed to 'pip install xlrd' for this to work.
+    dfCountyCodes = pd.read_excel(codeslistFile, sheet_name='CTY', header=None, names=['County Name', 'County Code'])
+    
+    print()
+    print(f'.. found {dfCountyCodes.shape[0]} county codes in the code list spreadsheet')
+
+    # Remove the word 'County' from the end of the name, e.g. 'Essex County' => 'Essex'
+    dfCountyCodes['County Name'] = dfCountyCodes['County Name'].apply(stripWordCounty)
+
+    return dfCountyCodes
+
+def loadDistrictCodes(tmpDir) :
+
+    codeslistFile = tmpDir + r"/Doc/codelist.xlsx"
+
+    if not os.path.isfile(codeslistFile) :
+        print("*** No OS code list spreadsheet file found:", codeslistFile, file=sys.stderr)
+        return pd.DataFrame()
+
+    # NB Needed to 'pip install xlrd' for this to work.
+    dfDistrictCodes1 = pd.read_excel(codeslistFile, sheet_name='DIS', header=None, names=['District Name', 'District Code'])
+    dfDistrictCodes2 = pd.read_excel(codeslistFile, sheet_name='MTD', header=None, names=['District Name', 'District Code'])
+    dfDistrictCodes3 = pd.read_excel(codeslistFile, sheet_name='UTA', header=None, names=['District Name', 'District Code'])
+    dfDistrictCodes4 = pd.read_excel(codeslistFile, sheet_name='LBO', header=None, names=['District Name', 'District Code'])
+    
+    print()
+    print(f'.. found {dfDistrictCodes1.shape[0]} DIS district codes in the code list spreadsheet')
+    print(f'.. found {dfDistrictCodes2.shape[0]} MTD district codes in the code list spreadsheet')
+    print(f'.. found {dfDistrictCodes3.shape[0]} UTA district codes in the code list spreadsheet')
+    print(f'.. found {dfDistrictCodes4.shape[0]} LBO district codes in the code list spreadsheet')
+
+    dfDistrictCodes = pd.concat([dfDistrictCodes1, dfDistrictCodes2, dfDistrictCodes3, dfDistrictCodes4], ignore_index=True)
+
+    print(f'.. found {dfDistrictCodes.shape[0]} combined district codes in the code list spreadsheet')
+
+    print()
+    print(dfDistrictCodes)
+
+    return dfDistrictCodes
+
+def loadWardCodes(tmpDir) :
+
+    codeslistFile = tmpDir + r"/Doc/codelist.xlsx"
+
+    if not os.path.isfile(codeslistFile) :
+        print("*** No OS code list spreadsheet file found:", codeslistFile, file=sys.stderr)
+        return pd.DataFrame()
+
+    # NB Needed to 'pip install xlrd' for this to work.
+    dfWardCodes1 = pd.read_excel(codeslistFile, sheet_name='UTW', header=None, names=['Ward Name', 'Ward Code'])
+    dfWardCodes2 = pd.read_excel(codeslistFile, sheet_name='UTE', header=None, names=['Ward Name', 'Ward Code'])
+    dfWardCodes3 = pd.read_excel(codeslistFile, sheet_name='DIW', header=None, names=['Ward Name', 'Ward Code'])
+    dfWardCodes4 = pd.read_excel(codeslistFile, sheet_name='LBW', header=None, names=['Ward Name', 'Ward Code'])
+    dfWardCodes5 = pd.read_excel(codeslistFile, sheet_name='MTW', header=None, names=['Ward Name', 'Ward Code'])
+    
+    print()
+    print(f'.. found {dfWardCodes1.shape[0]} UTW ward codes in the code list spreadsheet')
+    print(f'.. found {dfWardCodes2.shape[0]} UTE ward codes in the code list spreadsheet')
+    print(f'.. found {dfWardCodes3.shape[0]} DIW ward codes in the code list spreadsheet')
+    print(f'.. found {dfWardCodes4.shape[0]} LBW ward codes in the code list spreadsheet')
+    print(f'.. found {dfWardCodes5.shape[0]} MTW ward codes in the code list spreadsheet')
+
+    dfWardCodes = pd.concat([dfWardCodes1, dfWardCodes2, dfWardCodes3, dfWardCodes4, dfWardCodes5], ignore_index=True)
+
+    print(f'.. found {dfWardCodes.shape[0]} combined ward codes in the code list spreadsheet')
+
+    print()
+    print(dfWardCodes)
+
+    # Note the spreadsheet has a few duplicates in the UTE sheet  ????
+    # Tintagel ED	E05009271
+    # Tintagel ED (DET)	E05009271
+    # In each case there is a (DET) version as well as a 'normal' one. Not sure why, but can perhaps just
+    # ignore 'DET' cases 
+    # can use 'match' and/or 'contains' somehow ?
+    # https://www.geeksforgeeks.org/get-all-rows-in-a-pandas-dataframe-containing-given-substring/
+
+    return dfWardCodes
+
 def checkAllUniqueValues(context, df, columnName) :
 
     allUnique = False
@@ -315,10 +405,12 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
     dfUnusedLookup = dfJoin[ dfJoin[mainDataFrameCodeJoinColumn].isnull() ][[lookupTableCodeColumn, lookupTableValueColumn]]
 
     unusedLookupsCount = dfUnusedLookup.shape[0]
-    print(f'... {unusedLookupsCount} '
-                  f'{"value in the lookup table is" if unusedLookupsCount == 1 else "values in the lookup table are"} '
-                  f'not referenced in the {mainDataFrameCodeJoinColumn} column ...')
-    if unusedLookupsCount > 0 :
+    if unusedLookupsCount == 0 :
+        print(f'... all values in the lookup table are referenced in the {mainDataFrameCodeJoinColumn} column ...')
+    else :
+        print(f'... {unusedLookupsCount} '
+                    f'{"value in the lookup table is" if unusedLookupsCount == 1 else "values in the lookup table are"} '
+                    f'not referenced in the {mainDataFrameCodeJoinColumn} column ...')
         print()
         for index, row in dfUnusedLookup.iterrows() :
             print(f'  - {row.values[0]} : {row.values[1]}')
@@ -334,14 +426,16 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
     lookupsNotFoundCount = dfLookupNotFound.shape[0]
     if lookupsNotFoundCount == 0 :
         print()
-        print(f'... all values in the main table {mainDataFrameCodeJoinColumn} column have a '
+        print(f'... all rows in the main table {mainDataFrameCodeJoinColumn} column have a '
                     f'lookup value in the {lookupTableCodeColumn} column of the domain table')
     else :
         print()
-        print(f'*** ... {lookupsNotFoundCount} value{"" if lookupsNotFoundCount == 1 else "s"} in the main table have '
+        print(f'*** ... {lookupsNotFoundCount} row{"" if lookupsNotFoundCount == 1 else "s"} in the main table have '
                     f'no lookup value in the {lookupTableCodeColumn} column of the domain table ...')
 
         dfLookupNotFoundGrouped = dfLookupNotFound.groupby(mainDataFrameCodeJoinColumn, as_index=False).count()
+
+        print(f'*** ... {dfLookupNotFoundGrouped.shape[0]} distinct code value{"" if lookupsNotFoundCount == 1 else "s"} unmatched:')
         print()
         for index, row in dfLookupNotFoundGrouped.iterrows() :
             print(f'  *** {row.values[0]} : {row.values[1]}')
@@ -349,13 +443,13 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
     if 1==1 :
         return
 
-    # Produce a detail group-by breakdown summary ?
-    # And now do a final join ?
+    # Produce a detail group-by breakdown summary ????
+    # And now do a final join ????
 
 def main(args) :
     OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
-    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
     tmpDir = os.path.dirname(OSZipFile) + '/tmp'
+    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
 
     if not os.path.isfile(OSZipFile) :
         print("*** No OS zip file found:", OSZipFile, file=sys.stderr)
@@ -363,6 +457,26 @@ def main(args) :
 
     if not os.path.isfile(postcodeAreasFile) :
         print("*** No ONS postcode areas spreadsheet file found:", postcodeAreasFile, file=sys.stderr)
+        return
+
+    dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
+    if dfAreas.empty :
+        return
+
+    dfCountries = loadCountryCodes()
+    if dfCountries.empty :
+        return
+
+    dfCounties = loadCountyCodes(tmpDir)
+    if dfCounties.empty :
+        return
+
+    dfDistricts = loadDistrictCodes(tmpDir)
+    if dfDistricts.empty :
+        return
+
+    dfWards = loadWardCodes(tmpDir)
+    if dfWards.empty :
         return
 
     unpackZipFile(OSZipFile, tmpDir)
@@ -375,19 +489,22 @@ def main(args) :
     else :
         return
 
-    dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
-    if dfAreas.empty :
-        return
-
-    dfCountries = loadCountryCodes()
-    if dfCountries.empty :
-        return
-
     countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
     checkCodesReferentialIntegrity(df, dfCountries, countriesParameters)
 
     areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
     checkCodesReferentialIntegrity(df, dfAreas, areasParameters)
+
+    countiesParameters = ('County Codes', 'Postcode', 'Admin_county_code', 'County Code','County Name')
+    checkCodesReferentialIntegrity(df, dfCounties, countiesParameters)
+
+    districtsParameters = ('District Codes', 'Postcode', 'Admin_district_code', 'District Code','District Name')
+    checkCodesReferentialIntegrity(df, dfDistricts, districtsParameters)
+
+    wardsParameters = ('Ward Codes', 'Postcode', 'Admin_ward_code', 'Ward Code','Ward Name')
+    checkCodesReferentialIntegrity(df, dfWards, wardsParameters)
+
+    # 1 million records in main table have no county code lookup = Nan ? And some other codes too ????
 
     #displayBasicInfo(df)
     #aggregate(df)

@@ -127,9 +127,10 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
     combined_df = pd.concat(dfList, ignore_index=True)
     print(f'.. found {combined_df.shape[0]} postcodes in {len(matchingFilenames)} CSV files')
 
-    # Make Postcode the index instead of the auto-assigned range. As part of this, check there are no duplicate postcodes.
+    # Make Postcode the index instead of the auto-assigned range. As part of this, check there are no duplicate postcodes. And then
+    # go back to an auto-assigned range, as later group-bys are easier if the Postcode is present as a normal column.
     try :
-        combined_df = combined_df.set_index('Postcode', verify_integrity=True)
+        combined_df = combined_df.set_index('Postcode', verify_integrity=True).reset_index()
     except ValueError as e :
         print()
         print(f'*** Found duplicate postcodes: {e}')
@@ -247,6 +248,18 @@ def tk(df) :
 
     mainloop()
 
+def loadCountryCodes() :
+
+    countryCodeDict = {
+        'E92000001' : 'England',
+        'S92000003' : 'Scotland',
+        'W92000004' : 'Wales',
+        'N92000002' : 'N. Ireland'
+    }
+
+    dfCountries = pd.DataFrame({ 'Country Code' : list(countryCodeDict.keys()), 'Country Name' : list(countryCodeDict.values()) })
+    return dfCountries
+
 # The postcode_district_area_lists.xls file has lists of postcode areas, which should match the 'xx' part
 # of the 'xx.csv' postcode data file names. The file comes from here rather than the OS:
 # https://www.postcodeaddressfile.co.uk/downloads/free_products/postcode_district_area_lists.xls
@@ -269,96 +282,79 @@ def loadPostcodeAreasFile(postcodeAreasFile) :
 
     return dfAreas
 
-def checkCountryCodes(df) :
-    countryCodeDict = {
-        'E92000001' : 'England',
-        'S92000003' : 'Scotland',
-        'W92000004' : 'Wales',
-        'N92000002' : 'N. Ireland'
-    }
-    dfCountryCodes = pd.DataFrame({ 'code' : list(countryCodeDict.keys()), 'value' : list(countryCodeDict.values()) })
-    print(dfCountryCodes)
+def checkAllUniqueValues(context, df, columnName) :
 
-    dfFirst10 = df[0:10]
-    print(dfFirst10)
-    dfJoin = pd.merge(df, dfCountryCodes, left_on='Country_code', right_on='code', how='left')
-    print(dfJoin)
-    print(dfJoin.groupby(['Country_code','value']).count())
+    allUnique = False
+    try :
+        df.set_index(columnName, verify_integrity=True)
+        allUnique = True
+    except ValueError as e :
+        allUnique = False
+        print()
+        print(f'*** Found duplicate values in {context} in column {columnName}: {e}', file=sys.stderr)
 
-    # Group by 'value' counts by Country code value - E, S, W
-    # but counts depend on a non Nan value - only index 'Postcode' has this (can we confirm this ?). So what is the 
-    # best way to count this ?
-    # Also, the join produces extra columns called 'code' and 'value' on the end - not great names, and 'code' is just
-    # a repeat of Country_code.
-    # How does the above work if reading in e.g. county-codes from XLS (into a dataframe directly - what does that look like ?d)
+    return allUnique
 
-def checkAreaCodes(df, dfAreas) :
+def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
+
+    (context, mainDataFramePKColumn, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, lookupTableValueColumn) = parameters
 
     print()
-    print('Checking area codes ...')
-    print()
-    dfFirst10 = df[0:10]
-    print(dfFirst10)
-    dfJoin = pd.merge(df, dfAreas, left_on='PostcodeArea', right_on='Postcode Area', how='left')
-    print()
-    print('Initial join')
-    print()
-    print(dfJoin)
-    print()
-    # Replace NaN values with '??' in the join-related columns, for ease of grouping by missing values.
-    dfJoin.fillna({'Postcode Area' : '??', 'Post Town' : '??', 'PostcodeArea' : '??'}, inplace=True)
-    print()
-    print('Filled join')
-    print()
-    print(dfJoin)
-    print()
-    # Post Code/Town is defined, but no actual postcodes. Outer join just produces one row, so no
-    # real need to group
-    print(dfJoin[dfJoin['PostcodeArea']  == '??'])      
-    print()
+    print(f'Checking {context} ...')
 
-    # PostcodeArea from xx.csv is not in the spreadsheet, so can't assign a Post Code Town. If there are any cases,
-    # will be 100s of them for that xx, so use grouping.
-    dfG = dfJoin[dfJoin['Postcode Area']  == '??'].groupby([dfJoin['PostcodeArea'],dfJoin['Postcode Area'],dfJoin['Post Town']]).count()
+    # Check lookup for unique keys
+    uniquenessOK = checkAllUniqueValues(context, dfLookup, lookupTableCodeColumn)
+    if not uniquenessOK :
+        return
 
-    print()
-    print('Grouped by Postcode area fields - no Post Town lookup:')
-    print()
-    print(dfG)
-    print()
+    print(f'... {lookupTableCodeColumn} values are unique in lookup table ...')
 
-    dfG = dfJoin[dfJoin['Postcode Area']  != '??'].groupby([dfJoin['PostcodeArea'],dfJoin['Postcode Area'],dfJoin['Post Town']]).count()
+    # Outer join the main table and lookup table to find unused domain values in the lookup, and pull out records
+    # with no value for the main table. We will only have one record per unused value. 
+    dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='right')
+    dfUnusedLookup = dfJoin[ dfJoin[mainDataFrameCodeJoinColumn].isnull() ][[lookupTableCodeColumn, lookupTableValueColumn]]
 
-    print()
-    print('Grouped by Postcode area fields - Post Town lookup exists:')
-    print()
-    print(dfG)
-    print()
-
-    # Find info about areas in main data not in lookup
-    # Eek numpy/pandas issue https://stackoverflow.com/questions/40659212/futurewarning-elementwise-comparison-failed-returning-scalar-but-in-the-futur
-    # May be because the groupby dataframe is a different type of data structure, so its columns are int offsets into the source ?
-    # See https://realpython.com/pandas-groupby/
-    # If so would explain the comparison issues.
-    # https://pandas.pydata.org/pandas-docs/stable/reference/groupby.html
-    # 'Having' clause equivalent ?
-#    print(dfG.info())
-    #dfNoLookup = dfG['PostcodeArea'] == '??'
-    
-#    print('No lookup:')
-#    print(dfNoLookup)
-    #print(dfG[dfNoLookup])
-
-    # Probably need to do filtering on joined df, with na's replaced, then do grouping on result ?
-
-    # Other consideration is checking that post town codes (and other lookups) are unique in source data.
+    unusedLookupsCount = dfUnusedLookup.shape[0]
+    print(f'... {unusedLookupsCount} '
+                  f'{"value in the lookup table is" if unusedLookupsCount == 1 else "values in the lookup table are"} '
+                  f'not referenced in the {mainDataFrameCodeJoinColumn} column ...')
+    if unusedLookupsCount > 0 :
+        print()
+        for index, row in dfUnusedLookup.iterrows() :
+            print(f'  - {row.values[0]} : {row.values[1]}')
 
 
+    # Outer join the main table and lookup table in the other direction to find referential integrity issues for 
+    # column values in the main table with no matching value in the lookup table. There will probably be multiple
+    # records having the same missing lookup value, so we need to do some grouping before reporting at an aggregate
+    # level.
+    dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='left')
+    dfLookupNotFound = dfJoin[ dfJoin[lookupTableCodeColumn].isnull() ] [[mainDataFramePKColumn, mainDataFrameCodeJoinColumn]]
 
+    lookupsNotFoundCount = dfLookupNotFound.shape[0]
+    if lookupsNotFoundCount == 0 :
+        print()
+        print(f'... all values in the main table {mainDataFrameCodeJoinColumn} column have a '
+                    f'lookup value in the {lookupTableCodeColumn} column of the domain table')
+    else :
+        print()
+        print(f'*** ... {lookupsNotFoundCount} value{"" if lookupsNotFoundCount == 1 else "s"} in the main table have '
+                    f'no lookup value in the {lookupTableCodeColumn} column of the domain table ...')
+
+        dfLookupNotFoundGrouped = dfLookupNotFound.groupby(mainDataFrameCodeJoinColumn, as_index=False).count()
+        print()
+        for index, row in dfLookupNotFoundGrouped.iterrows() :
+            print(f'  *** {row.values[0]} : {row.values[1]}')
+
+    if 1==1 :
+        return
+
+    # Produce a detail group-by breakdown summary ?
+    # And now do a final join ?
 
 def main(args) :
     OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
-    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists_x.xls"
+    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
     tmpDir = os.path.dirname(OSZipFile) + '/tmp'
 
     if not os.path.isfile(OSZipFile) :
@@ -383,11 +379,18 @@ def main(args) :
     if dfAreas.empty :
         return
 
+    dfCountries = loadCountryCodes()
+    if dfCountries.empty :
+        return
+
+    countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
+    checkCodesReferentialIntegrity(df, dfCountries, countriesParameters)
+
+    areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
+    checkCodesReferentialIntegrity(df, dfAreas, areasParameters)
+
     #displayBasicInfo(df)
     #aggregate(df)
-
-    # checkCountryCodes(df)
-    checkAreaCodes(df, dfAreas)
 
     #tk(df)
 

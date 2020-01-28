@@ -21,6 +21,7 @@ def unpackZipFile(OSZipFile, tmpDir, detail=False) :
         else :
             print("*** Unexpected extract location found:", zinfo.filename, file=sys.stderr)
 
+    print()
     print(f'Extracting zip file {OSZipFile} under {tmpDir} ...')
     z.extractall(path=tmpDir)
     z.close()
@@ -248,6 +249,8 @@ def tk(df) :
 
     mainloop()
 
+#############################################################################################
+
 def loadCountryCodes() :
 
     countryCodeDict = {
@@ -304,6 +307,12 @@ def loadCountyCodes(tmpDir) :
 
     return dfCountyCodes
 
+def expandBoro(s) :
+    if s.endswith('London Boro') :
+        return s.replace(" London Boro", " London Borough")
+    else :
+        return s
+
 def loadDistrictCodes(tmpDir) :
 
     codeslistFile = tmpDir + r"/Doc/codelist.xlsx"
@@ -328,8 +337,8 @@ def loadDistrictCodes(tmpDir) :
 
     print(f'.. found {dfDistrictCodes.shape[0]} combined district codes in the code list spreadsheet')
 
-    print()
-    print(dfDistrictCodes)
+    # Change 'London Boro' to 'London Borough' at the end of the name, were relevant
+    dfDistrictCodes['District Name'] = dfDistrictCodes['District Name'].apply(expandBoro)
 
     return dfDistrictCodes
 
@@ -359,16 +368,18 @@ def loadWardCodes(tmpDir) :
 
     print(f'.. found {dfWardCodes.shape[0]} combined ward codes in the code list spreadsheet')
 
-    print()
-    print(dfWardCodes)
-
-    # Note the spreadsheet has a few duplicates in the UTE sheet  ????
+    # Note the spreadsheet has a few cases where a code has two names, with one of them ending (DET). E.g.
     # Tintagel ED	E05009271
     # Tintagel ED (DET)	E05009271
-    # In each case there is a (DET) version as well as a 'normal' one. Not sure why, but can perhaps just
-    # ignore 'DET' cases 
-    # can use 'match' and/or 'contains' somehow ?
-    # https://www.geeksforgeeks.org/get-all-rows-in-a-pandas-dataframe-containing-given-substring/
+    # According to https://www.ordnancesurvey.co.uk/documents/product-support/tech-spec/boundary-line-technical-specification.pdf
+    # this indicates a 'detached' part of the area, i.e. an enclave.
+    # For our simple purposes, just delete the (DET) entries.
+
+    dfDET = dfWardCodes['Ward Name'].str.endswith('(DET)')  # Column of True/False per ward code
+    if dfDET.sum() > 0 :
+        print(f'  .. deleting records for {dfDET.sum()} ward names ending "(DET)""')
+        dfWardCodes.drop(dfWardCodes[dfDET].index, inplace=True)
+        print(f'  .. leaving {dfWardCodes.shape[0]} combined ward codes')
 
     return dfWardCodes
 
@@ -459,6 +470,9 @@ def main(args) :
         print("*** No ONS postcode areas spreadsheet file found:", postcodeAreasFile, file=sys.stderr)
         return
 
+    print()
+    print('Loading code lookup data ..')
+
     dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
     if dfAreas.empty :
         return
@@ -506,8 +520,8 @@ def main(args) :
 
     # 1 million records in main table have no county code lookup = Nan ? And some other codes too ????
 
-    #displayBasicInfo(df)
-    #aggregate(df)
+    displayBasicInfo(df)
+    aggregate(df)
 
     #tk(df)
 

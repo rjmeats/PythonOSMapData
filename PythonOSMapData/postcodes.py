@@ -396,7 +396,7 @@ def checkAllUniqueValues(context, df, columnName) :
 
     return allUnique
 
-def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
+def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10) :
 
     (context, mainDataFramePKColumn, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, lookupTableValueColumn) = parameters
 
@@ -463,6 +463,20 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
             print(f'  *** {row.values[0]:2.2} : {row.values[1]}')
         if dfNullValuesGrouped.shape[0] > 10 :
             print(f'  *** ... and {dfNullValuesGrouped.shape[0] - 10} more ...')
+
+    if reportCodeUsage > 0 :
+        reportingColumns = [mainDataFramePKColumn, mainDataFrameCodeJoinColumn, lookupTableValueColumn]
+        dfReportGroup = dfJoin[reportingColumns] \
+                        .groupby([mainDataFrameCodeJoinColumn, lookupTableValueColumn], as_index=False).count()
+        print()
+        print(f'{dfReportGroup.shape[0]} different {mainDataFrameCodeJoinColumn} values in use:')
+        if dfReportGroup.shape[0] > reportCodeUsage :
+            print(f'.. listing the first {reportCodeUsage} cases.')
+        print()
+        for index, row in dfReportGroup[0:reportCodeUsage].iterrows() :
+            print(f'  {row.values[0]:10.10} {row.values[1]:30.30} {row.values[2]:7} rows')
+        if dfReportGroup.shape[0] > reportCodeUsage :
+            print(f'.. and {dfReportGroup.shape[0] - reportCodeUsage} more cases ..')
 
     return dfJoin
 
@@ -597,19 +611,19 @@ def main(args) :
     # itegrity and null-ness at the same time.
     dfDenormalised = df
     areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfAreas, areasParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfAreas, areasParameters, 150)
 
     countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCountries, countriesParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCountries, countriesParameters, 10)
 
     countiesParameters = ('County Codes', 'Postcode', 'Admin_county_code', 'County Code','County Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCounties, countiesParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCounties, countiesParameters, 50)
 
     districtsParameters = ('District Codes', 'Postcode', 'Admin_district_code', 'District Code','District Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfDistricts, districtsParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfDistricts, districtsParameters, 20)
 
     wardsParameters = ('Ward Codes', 'Postcode', 'Admin_ward_code', 'Ward Code','Ward Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfWards, wardsParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfWards, wardsParameters, 20)
 
     # Prune the column list - the above will have added an extra copy of each 'code' column that we can
     # remove again. Just use the original columns in the dataframe and the main lookup columns added.

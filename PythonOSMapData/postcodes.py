@@ -406,9 +406,9 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
     # Check lookup for unique keys
     uniquenessOK = checkAllUniqueValues(context, dfLookup, lookupTableCodeColumn)
     if not uniquenessOK :
-        return
+        return df
 
-    print(f'... {lookupTableCodeColumn} values are unique in lookup table ...')
+    print(f'... no duplicate codes in the {lookupTableCodeColumn} lookup table ...')
 
     # Outer join the main table and lookup table to find unused domain values in the lookup, and pull out records
     # with no value for the main table. We will only have one record per unused value. 
@@ -432,6 +432,7 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
     # level.
     dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='left')
     dfLookupNotFound = dfJoin[ dfJoin[lookupTableCodeColumn].isnull() & dfJoin[mainDataFrameCodeJoinColumn].notnull() ] [[mainDataFramePKColumn, mainDataFrameCodeJoinColumn]]
+
     dfNullValues = df[ df[mainDataFrameCodeJoinColumn].isnull() ] [[mainDataFramePKColumn, 'PostcodeArea']]
 
     lookupsNotFoundCount = dfLookupNotFound.shape[0]
@@ -463,11 +464,86 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
         if dfNullValuesGrouped.shape[0] > 10 :
             print(f'  *** ... and {dfNullValuesGrouped.shape[0] - 10} more ...')
 
-    if 1==1 :
-        return
+    return dfJoin
 
-    # Produce a detail group-by breakdown summary ????
-    # And now do a final join ????
+def displayExample(df, example=None) :
+    # Print out details of an example postcode (Trent Bridge).
+    examplePostCode = 'NG2 6AG' if example == None else example
+
+    print()
+    print('###############################################################')
+    print()
+    print(f'Values for example postcode {examplePostCode}')
+    print()
+    format="Vertical"
+
+    if format == "Vertical" :
+        # Print vertically, so all columns are listed
+        print(df [df['Postcode'] == examplePostCode] .transpose(copy=True))
+    elif format == "Horizontal" :
+        # Print horizontally, no wrapping, just using the available space, omitting columns in the middle
+        # if needed. (The default setting.)
+        print(df [df['Postcode'] == examplePostCode])
+    elif format == "HorizontalWrap" :
+        # Print horizontally, wrapping on to the next line, so all columns are listed
+        pd.set_option('display.expand_frame_repr', False)
+        print(df [df['Postcode'] == examplePostCode])
+        pd.set_option('display.expand_frame_repr', True)        # Reset to default.
+    else :
+        print('f*** Unrecognised output row format: {format}')
+
+    print()
+    print('###############################################################')
+
+
+# Code point Open User Guide explains the Quality values as follows:
+# https://www.ordnancesurvey.co.uk/documents/product-support/user-guide/code-point-open-user-guide.pdf
+# 
+# 10 Within the building of the matched address closest to the postcode mean determined automatically by Ordnance Survey.
+# 20 As above, but determined by visual inspection by NRS.
+# 30 Approximate to within 50 m of true position (postcodes relating to developing sites may be within 100 m of true position).
+# 40 The mean of the positions of addresses previously matched in PALF but that have subsequently been deleted or recoded (very rarely used).
+# 50 Estimated position based on surrounding postcode coordinates, usually to 100 m resolution, but 10 m in Scotland.
+# 60 Postcode sector mean (direct copy from PALF). See glossary for additional information.
+# 90 No coordinates available.
+#
+# Observation of data shows that:
+# - for values of 60 and 90, District and Ward information is always missing
+# - for values of 90, Eastings and Northings values are set to 0
+# - [County information is much more variable - absent for all 60 and 90 examples, but also in many 10,20,30 and 50.]
+# for values 10,20,30,50 all information is present
+# No cases of 40 were present in the data.
+# Nearly all data is assigned as 10, with a small amount of 50 and 90, and traces of 20,30,60
+
+
+def examineLocationColumns(df) :
+
+    dfG = df[ ['Postcode', 'PostcodeArea', 'Quality', 'Eastings', 'Northings', 'County Name', 'District Name', 'Ward Name'] ].groupby('Quality').count()
+    print()
+    print('Counts of non-null values by location quality:')
+    print()
+    print(dfG)
+
+    dfG = df[ ['Postcode', 'PostcodeArea', 'Quality', 'Eastings', 'Northings'] ].groupby('Quality').agg(
+                Cases = ('Quality', 'count'),
+                Min_E = ('Eastings', 'min'),
+                Max_E = ('Eastings', 'max'),
+                Min_N = ('Northings', 'min'),
+                Max_N = ('Northings', 'max')
+                    )
+    print()
+    print('Eastings and Northing ranges by location quality:')
+    print()
+    print(dfG)
+
+    print()
+    print('Quality=60 examples')
+    print()
+    print(df[ df['Quality'] == 60][0:10])
+    print()
+    print('Quality=90 examples:')
+    print()
+    print(df[ df['Quality'] == 90][0:10])
 
 def main(args) :
     OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
@@ -515,24 +591,37 @@ def main(args) :
     else :
         return
 
-    countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
-    checkCodesReferentialIntegrity(df, dfCountries, countriesParameters)
+    displayBasicInfo(df)
 
+    # Add further columns showing looked-up values of the various code columns, checking referential
+    # itegrity and null-ness at the same time.
+    dfDenormalised = df
     areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
-    checkCodesReferentialIntegrity(df, dfAreas, areasParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfAreas, areasParameters)
+
+    countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCountries, countriesParameters)
 
     countiesParameters = ('County Codes', 'Postcode', 'Admin_county_code', 'County Code','County Name')
-    checkCodesReferentialIntegrity(df, dfCounties, countiesParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCounties, countiesParameters)
 
     districtsParameters = ('District Codes', 'Postcode', 'Admin_district_code', 'District Code','District Name')
-    checkCodesReferentialIntegrity(df, dfDistricts, districtsParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfDistricts, districtsParameters)
 
     wardsParameters = ('Ward Codes', 'Postcode', 'Admin_ward_code', 'Ward Code','Ward Name')
-    checkCodesReferentialIntegrity(df, dfWards, wardsParameters)
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfWards, wardsParameters)
 
-    #displayBasicInfo(df)
+    # Prune the column list - the above will have added an extra copy of each 'code' column that we can
+    # remove again. Just use the original columns in the dataframe and the main lookup columns added.
+    
+    fullOutputColumns = (list(df.columns)).copy()
+    fullOutputColumns.extend(['Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name'])
+    dfDenormalised = dfDenormalised[fullOutputColumns]
+
+    displayExample(dfDenormalised)
+
+    examineLocationColumns(dfDenormalised)
     #aggregate(df)
-
     #tk(df)
 
 if __name__ == '__main__' :

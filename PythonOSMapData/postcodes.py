@@ -422,7 +422,6 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
         print(f'... {unusedLookupsCount} '
                     f'{"value in the lookup table is" if unusedLookupsCount == 1 else "values in the lookup table are"} '
                     f'not referenced in the {mainDataFrameCodeJoinColumn} column ...')
-        print()
         for index, row in dfUnusedLookup.iterrows() :
             print(f'  - {row.values[0]} : {row.values[1]}')
 
@@ -432,24 +431,37 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters) :
     # records having the same missing lookup value, so we need to do some grouping before reporting at an aggregate
     # level.
     dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='left')
-    dfLookupNotFound = dfJoin[ dfJoin[lookupTableCodeColumn].isnull() ] [[mainDataFramePKColumn, mainDataFrameCodeJoinColumn]]
+    dfLookupNotFound = dfJoin[ dfJoin[lookupTableCodeColumn].isnull() & dfJoin[mainDataFrameCodeJoinColumn].notnull() ] [[mainDataFramePKColumn, mainDataFrameCodeJoinColumn]]
+    dfNullValues = df[ df[mainDataFrameCodeJoinColumn].isnull() ] [[mainDataFramePKColumn, 'PostcodeArea']]
 
     lookupsNotFoundCount = dfLookupNotFound.shape[0]
+    nullValuesCount = dfNullValues.shape[0]
     if lookupsNotFoundCount == 0 :
-        print()
-        print(f'... all rows in the main table {mainDataFrameCodeJoinColumn} column have a '
+        print(f'... all {"" if nullValuesCount == 0 else "non-null "}rows in the main table {mainDataFrameCodeJoinColumn} column have a '
                     f'lookup value in the {lookupTableCodeColumn} column of the domain table')
     else :
-        print()
-        print(f'*** ... {lookupsNotFoundCount} row{"" if lookupsNotFoundCount == 1 else "s"} in the main table have '
-                    f'no lookup value in the {lookupTableCodeColumn} column of the domain table ...')
+        print(f'*** ... {lookupsNotFoundCount} {"" if nullValuesCount == 0 else "non-null "}row{"" if lookupsNotFoundCount == 1 else "s"} '
+                    f'in the main table have no lookup value in the {lookupTableCodeColumn} column of the domain table ...')
 
         dfLookupNotFoundGrouped = dfLookupNotFound.groupby(mainDataFrameCodeJoinColumn, as_index=False).count()
 
         print(f'*** ... {dfLookupNotFoundGrouped.shape[0]} distinct code value{"" if lookupsNotFoundCount == 1 else "s"} unmatched:')
-        print()
         for index, row in dfLookupNotFoundGrouped.iterrows() :
             print(f'  *** {row.values[0]} : {row.values[1]}')
+
+    if nullValuesCount == 0 :
+        print(f'... all rows in the main table {mainDataFrameCodeJoinColumn} column have a non-null value')
+    else :
+        print(f'*** ... {nullValuesCount} row{"" if nullValuesCount == 1 else "s"} in the main table have'
+                    f' a null value in the {mainDataFrameCodeJoinColumn} column ...')
+
+        dfNullValuesGrouped = dfNullValues.groupby('PostcodeArea', as_index=False).count()
+
+        print(f'*** ... {dfNullValuesGrouped.shape[0]} Postcode Area{"" if nullValuesCount == 1 else "s"} have null codes:')
+        for index, row in dfNullValuesGrouped[0:10].iterrows() :
+            print(f'  *** {row.values[0]:2.2} : {row.values[1]}')
+        if dfNullValuesGrouped.shape[0] > 10 :
+            print(f'  *** ... and {dfNullValuesGrouped.shape[0] - 10} more ...')
 
     if 1==1 :
         return
@@ -518,10 +530,8 @@ def main(args) :
     wardsParameters = ('Ward Codes', 'Postcode', 'Admin_ward_code', 'Ward Code','Ward Name')
     checkCodesReferentialIntegrity(df, dfWards, wardsParameters)
 
-    # 1 million records in main table have no county code lookup = Nan ? And some other codes too ????
-
-    displayBasicInfo(df)
-    aggregate(df)
+    #displayBasicInfo(df)
+    #aggregate(df)
 
     #tk(df)
 

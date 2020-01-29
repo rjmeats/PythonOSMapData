@@ -3,6 +3,7 @@ import sys
 
 import zipfile
 import pandas as pd
+import pickle
 
 """
 https://en.wikipedia.org/wiki/List_of_postcode_districts_in_the_United_Kingdom
@@ -228,26 +229,6 @@ def aggregate(df) :
 
 #############################################################################################
 
-from tkinter import Tk, Canvas, mainloop
-
-def tk(df) :
-    master = Tk()
-
-    canvas_width = 800
-    canvas_height = 400
-    w = Canvas(master, 
-            width=canvas_width,
-            height=canvas_height)
-    w.pack()
-
-    y = int(canvas_height / 2)
-    #w.create_line(0, y, canvas_width, y)
-
-    for x in range(0, 100, 4) :
-        for y in range(0, 100, 4) :
-            w.create_oval(x,y,x,y, fill="red", outline="#fb0", width=1)
-
-    mainloop()
 
 #############################################################################################
 
@@ -559,41 +540,75 @@ def examineLocationColumns(df) :
     print()
     print(df[ df['Quality'] == 90][0:10])
 
-def main(args) :
-    OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
-    tmpDir = os.path.dirname(OSZipFile) + '/tmp'
-    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
+def getCacheFilePath(tmpDir) :
+    return tmpDir + '/cached/df.cache'
+
+def readCachedDataFrameFromFile(tmpDir) :
+
+    cacheFile = getCacheFilePath(tmpDir)
+    print()
+    print(f'Reading dataframe from cache file {cacheFile} ..')
+    if os.path.isfile(cacheFile) :
+        print(f'.. cache file {cacheFile} found ..')
+
+        with open(cacheFile, 'rb') as f:
+            response = pickle.load(f)
+            print(f'.. read pre-existing response from cache file')
+    else :
+        print(f'*** No cache file {cacheFile} found.')
+        response = pd.DataFrame()
+
+    return response
+
+def writeCachedDataFrame(tmpDir, df) :
+    cacheFile = getCacheFilePath(tmpDir)
+    print()
+    print(f'Writing dataframe to cache file {cacheFile} ..')
+    
+    cacheFileDir = os.path.dirname(cacheFile)
+    if not os.path.isdir(cacheFileDir) :
+        os.makedirs(cacheFileDir)
+        print(f'.. created cache location {cacheFileDir}')
+
+    # Use pickle to cache the response data.
+    with open(cacheFile, 'wb') as f:
+        pickle.dump(df, f)
+        print(f'.. written dataframe as binary object to cache file {cacheFile}')
+
+def regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile) :
+
+    dfEmpty = pd.DataFrame()
 
     if not os.path.isfile(OSZipFile) :
         print("*** No OS zip file found:", OSZipFile, file=sys.stderr)
-        return
+        return dfEmpty
 
     if not os.path.isfile(postcodeAreasFile) :
         print("*** No ONS postcode areas spreadsheet file found:", postcodeAreasFile, file=sys.stderr)
-        return
+        return dfEmpty
 
     print()
     print('Loading code lookup data ..')
 
     dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
     if dfAreas.empty :
-        return
+        return dfEmpty
 
     dfCountries = loadCountryCodes()
     if dfCountries.empty :
-        return
+        return dfEmpty
 
     dfCounties = loadCountyCodes(tmpDir)
     if dfCounties.empty :
-        return
+        return dfEmpty
 
     dfDistricts = loadDistrictCodes(tmpDir)
     if dfDistricts.empty :
-        return
+        return dfEmpty
 
     dfWards = loadWardCodes(tmpDir)
     if dfWards.empty :
-        return
+        return dfEmpty
 
     unpackZipFile(OSZipFile, tmpDir)
 
@@ -603,7 +618,7 @@ def main(args) :
     if not df.empty :
         print(f'Took {took.total_seconds()} seconds to load data files into a dataframe')
     else :
-        return
+        return dfEmpty
 
     displayBasicInfo(df)
 
@@ -632,11 +647,106 @@ def main(args) :
     fullOutputColumns.extend(['Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name'])
     dfDenormalised = dfDenormalised[fullOutputColumns]
 
-    displayExample(dfDenormalised)
-
     examineLocationColumns(dfDenormalised)
+
+    return dfDenormalised
+
+from tkinter import Tk, Canvas, mainloop
+
+pcColourDict = {
+    "NE" : "red",
+    "DN" : "blue",
+    "E"  : "yellow",
+    "OX" : "green",
+    "B"  : "pink",
+    "NR" : "purple"
+}
+
+pcDefaultColour = "black"
+
+def tkPlot(df, density=100) :
+    master = Tk()
+    canvas_width = 800
+    canvas_height = 1000            # Need to get to 1213165 to cover Shetland, 
+    w = Canvas(master, 
+            width=canvas_width,
+            height=canvas_height)
+    w.pack()
+
+    useZip = True
+
+    if useZip :
+        # Faster than using iterrows.
+        # Could do bulk e/n scaling first too in bulk ?
+        dfSlice = df.iloc[::density]
+        print(dfSlice)
+        for index, r in enumerate(zip(dfSlice['Eastings'], dfSlice['Northings'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
+            (e, n, pc, area) = r
+            if e == 0 :
+                continue
+            e_scaled = e // 1000
+            n_scaled = canvas_height - n // 1000
+            if index % (100000/density) == 0 :
+                print(index, e_scaled, n_scaled, pc)
+            if n_scaled >=0 and n_scaled < canvas_height :
+                #print(index, e_scaled, n_scaled, pc)
+                colour = pcColourDict.get(area, pcDefaultColour)
+                w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=0)
+    else :
+        for index, row in df[::density].iterrows():
+            e = getattr(row, "Eastings")
+            n = getattr(row, "Northings")
+            pc = getattr(row, "Postcode")
+            area = getattr(row, "PostcodeArea")
+            if e == 0 :
+                continue
+            e_scaled = e // 1000
+            n_scaled = canvas_height - n // 1000
+            if index % 100000 == 0 :
+                print(index, e_scaled, n_scaled, pc)
+            if n_scaled >=0 and n_scaled < canvas_height :
+                #print(index, e_scaled, n_scaled, pc)
+                colour = pcColourDict.get(area, pcDefaultColour)
+                w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=2)
+
+    mainloop()
+
+def main(args) :
+
+    OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
+    tmpDir = os.path.dirname(OSZipFile) + '/tmp'
+    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
+
+    # Decide whether to generate a new dataframe or read a cached one from file. Any sort of command line argument
+    # means generate from scratch.
+    readFromFile = False
+    if len(args) > 1 :
+        readFromFile = False
+    else :
+        readFromFile = True
+
+    if readFromFile :
+        df = readCachedDataFrameFromFile(tmpDir)
+    else :
+        df = regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile)
+        if not df.empty :
+            writeCachedDataFrame(tmpDir, df)
+
+    if df.empty :
+        print()
+        print('*** No dataframe produced')
+        return
+
+    print()
+    print(df)
+
+    displayExample(df)
+
     #aggregate(df)
-    #tk(df)
+    print()
+
+    tkPlot(df, 10)
+
 
 if __name__ == '__main__' :
     main(sys.argv)

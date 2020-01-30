@@ -655,16 +655,8 @@ def regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile) :
 
 from tkinter import Tk, Canvas, mainloop
 
-pcColourDict = {
-    "NE" : "red",
-    "DN" : "blue",
-    "E"  : "yellow",
-    "OX" : "green",
-    "B"  : "pink",
-    "NR" : "purple"
-}
-
 pcDefaultColour = "black"
+pcDefaultColourRGB = "(0,0,0)"
 
 def assignAreasToColourGroups(df) :
     # Determine extent of each Postcode Area
@@ -687,7 +679,10 @@ def assignAreasToColourGroups(df) :
     # ???? Algorithm to assign areas to colour groups so that close areas don't use the same colour. 
     # For now just use lots of colours and rely on chance ! 
     # https://www.tcl.tk/man/tcl8.4/TkCmd/colors.htm
-    availableColours = [ "red", "blue", "green", "yellow", "orange", "purple", "brown", "pink", "cyan", "magenta", "violet", "grey"]
+    availableColours = [ "red", "blue", "green", "yellow", "orange", "purple", "brown", 
+                            "pink", "cyan", "magenta", "violet", "grey"]
+    availableColoursRGB = [ (255,0,0), (0,0,255), (0,255,0), (255,255,0), (255,165,0), (160,32,240), (165,42,42), 
+                            (255,192,203), (0,255,255), (255,0,255), (238,130,238), (190,190,190)]
     numGroups = len(availableColours)
 
     # Set up a list of lists, one per colour
@@ -701,16 +696,18 @@ def assignAreasToColourGroups(df) :
 
     # Produce a dictionary to map each Postcode Area to its colour
     d = {}
+    dRGB = {}
     for i in range(numGroups) :
         for a in colourGroupsList[i] :
             d[a] = availableColours[i]
+            dRGB[a] = availableColoursRGB[i]
 
-    return d
+    return d, dRGB
 
 def tkPlot(df, density=100) :
 
     # Dictionary to allow us to show different Postcode Areas in different colours.
-    areaColourDict = assignAreasToColourGroups(df)
+    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
 
     master = Tk()
     canvas_width = 800
@@ -758,6 +755,7 @@ def tkPlot(df, density=100) :
                 #print(index, e_scaled, n_scaled, pc)
                     colour = areaColourDict.get(area, pcDefaultColour)
                     w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=0)
+                    #w.create_line(e_scaled,n_scaled,e_scaled+1,n_scaled, fill=colour, width=1)
     else :
         for index, row in df[::density].iterrows():
             e = getattr(row, "Eastings")
@@ -780,6 +778,76 @@ def tkPlot(df, density=100) :
     # Display the tk plot
 
     mainloop()
+
+
+import numpy as np
+
+def newImageArray(y, x) :
+    """ Create a new image array of dimensions [y,x,RGB], set to all white """
+    return np.full((y,x,3), 255, dtype='uint8')
+
+def convertToBGR(imgArray) :
+    """ Converts a 3-D [y,x,RGB] numpy array to [y,x,BGR] format, (for use with CV2) """
+    return imgArray[:,:,::-1]
+
+def cv2plot(df, density=100) :
+    # For CV2 we need to reverse the colour ordering of the array to BGR
+    from cv2 import cv2
+
+    canvas_width = 800
+    canvas_height = 1000            # Need to get to 1213165 to cover Shetland, 
+    img = newImageArray(canvas_height, canvas_width)
+
+    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+
+    london = True
+    if london :
+        scaling_factor = 100
+        offset_e = -480000
+        offset_n = -120000
+    else :
+        scaling_factor = 1000
+        offset_e = 0
+        offset_n = 0
+
+    # Vary width of oval dot depending on density ????
+    # Do we need to use 'oval's to do the plotting, rather than points ?
+
+    # Different ways to work through the set of postcodes, row by row.
+    useZip = True
+    if useZip :
+        # Faster than using iterrows.
+        # Could do bulk e/n scaling first too in bulk ?
+        # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
+        dfSlice = df.iloc[::density]
+        print(dfSlice)
+        for index, r in enumerate(zip(dfSlice['Eastings'], dfSlice['Northings'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
+            (e, n, pc, area) = r
+            if e == 0 :
+                continue
+            e_offset  = e + offset_e
+            n_offset  = n + offset_n
+            e_scaled = e_offset // scaling_factor
+            n_scaled = canvas_height - n_offset // scaling_factor
+            if index % (100000/density) == 0 :
+                print(index, e_scaled, n_scaled, pc)
+            if n_scaled >=0 and n_scaled < canvas_height :
+                if e_scaled >=0 and e_scaled < canvas_width :
+                #print(index, e_scaled, n_scaled, pc)
+                    colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
+                    #colour = RGBColourGreen = (0,255,0)
+                    #w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=0)
+                    #w.create_line(e_scaled,n_scaled,e_scaled+1,n_scaled, fill=colour, width=1)
+                    thickness = -1      # negative == fill
+                    lineType = 8
+                    shift = 0
+                    cv2.circle(img, center=(e_scaled,n_scaled), radius=1, color=colour, thickness=thickness)
+
+    title = 'Title'
+    cv2.imshow(title, convertToBGR(img.copy()))
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
 
 def main(args) :
 
@@ -815,7 +883,8 @@ def main(args) :
     #aggregate(df)
     print()
 
-    tkPlot(df, 1)
+    #tkPlot(df, 1)
+    cv2plot(df, 1)
 
 
 if __name__ == '__main__' :

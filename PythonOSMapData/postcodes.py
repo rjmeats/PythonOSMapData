@@ -848,6 +848,84 @@ def cv2plot(df, density=100) :
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+import re
+pcreDigit = '[0-9]'
+pcDigitPattern = re.compile(pcreDigit)
+pcreLetter = '[A-Z]'
+pcLetterPattern = re.compile(pcreLetter)
+pcreSpace = r'\s'
+pcSpacePattern = re.compile(pcreSpace)
+
+
+def getPattern(row) :
+    pc = row['Postcode']
+    area = row['PostcodeArea']
+    result = pc + "-" + area
+
+    result = pcDigitPattern.sub('9', pc)
+    result = pcLetterPattern.sub('X', result)
+    result = pcSpacePattern.sub('#', result)
+
+    areaPattern = pcDigitPattern.sub('9', area)
+    areaPattern = pcLetterPattern.sub('X', areaPattern)
+    areaPattern = pcSpacePattern.sub('#', areaPattern)
+
+    result = result + '=' + areaPattern
+
+    outward = pc[0:-3].strip()
+    #print(f'In getPattern: {pc} + {area} = {result} : outward = {outward}')
+    return result
+
+    # How to return values for multiple columns ? Tuple doesn't seem to work
+"""
+         Postcode
+New
+X9##9XX     44363
+X99#9XX    156642
+X9X#9XX      9511
+XX9#9XX    683419
+XX999XX    797826
+XX9X9XX     10728
+
+            Postcode
+New
+X9##9XX=X      44363
+X99#9XX=X     156642
+X9X#9XX=X       9511
+XX9#9XX=XX    683419
+XX999XX=XX    797826
+XX9X9XX=XX     10728
+"""
+
+# All end 9XX. Variety of starts:
+# X9
+# X99
+# X9X
+# XX9
+# XX99
+# XX9X
+#
+# Really 3 variants X9, X99, X9X  repeated with leading XX where the postal area has two letters.
+# To get the outward part of the postcode, remove 9XX from end, trim spaces
+
+
+def assessPostCodeBreakdown(df) :
+
+    # Look at each postcode and convert to a pattern.
+    # 
+
+    # df['pattern'] = 
+    dfTrial = df
+    #print()
+    #print(dfTrial)
+    dfTrial['New'] = dfTrial.apply(getPattern, axis=1)      # NB This adds to df too
+    print()
+    print(dfTrial)
+    dfG = dfTrial[['Postcode', 'New']].groupby(['New'], as_index=True).count()
+    print()
+    print(dfG)
+    print()
+    print(df)
 
 def main(args) :
 
@@ -880,11 +958,13 @@ def main(args) :
 
     displayExample(df)
 
+    assessPostCodeBreakdown(df)
+
     #aggregate(df)
     print()
 
     #tkPlot(df, 1)
-    cv2plot(df, 1)
+    #cv2plot(df, 1)
 
 
 if __name__ == '__main__' :

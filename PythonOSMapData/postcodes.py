@@ -651,6 +651,8 @@ def regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile) :
 
     return dfDenormalised
 
+#############################################################################
+
 from tkinter import Tk, Canvas, mainloop
 
 pcColourDict = {
@@ -664,34 +666,98 @@ pcColourDict = {
 
 pcDefaultColour = "black"
 
+def assignAreasToColourGroups(df) :
+    # Determine extent of each Postcode Area
+
+    print('Determining Eastings and Northing ranges by Postcode area:')
+    # Ignore 0s
+    df = df [ df['Eastings'] != 0 ]
+    dfAreaExtents = df[ ['PostcodeArea', 'Eastings', 'Northings'] ].groupby('PostcodeArea').agg(
+                Cases = ('PostcodeArea', 'count'),
+                Min_E = ('Eastings', 'min'),
+                Max_E = ('Eastings', 'max'),
+                Min_N = ('Northings', 'min'),
+                Max_N = ('Northings', 'max')
+                    )
+    #print()
+    #print('Eastings and Northing ranges by Postcode area:')
+    #print()
+    #print(dfAreaExtents)
+
+    # ???? Algorithm to assign areas to colour groups so that close areas don't use the same colour. 
+    # For now just use lots of colours and rely on chance ! 
+    # https://www.tcl.tk/man/tcl8.4/TkCmd/colors.htm
+    availableColours = [ "red", "blue", "green", "yellow", "orange", "purple", "brown", "pink", "cyan", "magenta", "violet", "grey"]
+    numGroups = len(availableColours)
+
+    # Set up a list of lists, one per colour
+    colourGroupsList = []
+    for i in range(numGroups) :
+        colourGroupsList.append([])
+
+    # Spread the Postcode areas across these lists
+    for index, (row) in enumerate(dfAreaExtents.iterrows()) :
+        colourGroupsList[index % numGroups].append(row[0]) 
+
+    # Produce a dictionary to map each Postcode Area to its colour
+    d = {}
+    for i in range(numGroups) :
+        for a in colourGroupsList[i] :
+            d[a] = availableColours[i]
+
+    return d
+
 def tkPlot(df, density=100) :
+
+    # Dictionary to allow us to show different Postcode Areas in different colours.
+    areaColourDict = assignAreasToColourGroups(df)
+
     master = Tk()
     canvas_width = 800
     canvas_height = 1000            # Need to get to 1213165 to cover Shetland, 
+
+    london = True
+    if london :
+        scaling_factor = 100
+        offset_e = -480000
+        offset_n = -120000
+    else :
+        scaling_factor = 1000
+        offset_e = 0
+        offset_n = 0
+
     w = Canvas(master, 
             width=canvas_width,
             height=canvas_height)
     w.pack()
 
-    useZip = True
+    # Vary width of oval dot depending on density ????
+    # Do we need to use 'oval's to do the plotting, rather than points ?
 
+
+    # Different ways to work through the set of postcodes, row by row.
+    useZip = True
     if useZip :
         # Faster than using iterrows.
         # Could do bulk e/n scaling first too in bulk ?
+        # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
         dfSlice = df.iloc[::density]
         print(dfSlice)
         for index, r in enumerate(zip(dfSlice['Eastings'], dfSlice['Northings'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
             (e, n, pc, area) = r
             if e == 0 :
                 continue
-            e_scaled = e // 1000
-            n_scaled = canvas_height - n // 1000
+            e_offset  = e + offset_e
+            n_offset  = n + offset_n
+            e_scaled = e_offset // scaling_factor
+            n_scaled = canvas_height - n_offset // scaling_factor
             if index % (100000/density) == 0 :
                 print(index, e_scaled, n_scaled, pc)
             if n_scaled >=0 and n_scaled < canvas_height :
+                if e_scaled >=0 and e_scaled < canvas_width :
                 #print(index, e_scaled, n_scaled, pc)
-                colour = pcColourDict.get(area, pcDefaultColour)
-                w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=0)
+                    colour = areaColourDict.get(area, pcDefaultColour)
+                    w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=0)
     else :
         for index, row in df[::density].iterrows():
             e = getattr(row, "Eastings")
@@ -700,14 +766,18 @@ def tkPlot(df, density=100) :
             area = getattr(row, "PostcodeArea")
             if e == 0 :
                 continue
-            e_scaled = e // 1000
-            n_scaled = canvas_height - n // 1000
+            e_scaled = e // scaling_factor
+            n_scaled = canvas_height - n // scaling_factor
             if index % 100000 == 0 :
                 print(index, e_scaled, n_scaled, pc)
+            e_scaled += e_offset
+            n_scaled += n_offset
             if n_scaled >=0 and n_scaled < canvas_height :
                 #print(index, e_scaled, n_scaled, pc)
-                colour = pcColourDict.get(area, pcDefaultColour)
+                colour = areaColourDict.get(area, pcDefaultColour)
                 w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=2)
+
+    # Display the tk plot
 
     mainloop()
 
@@ -745,7 +815,7 @@ def main(args) :
     #aggregate(df)
     print()
 
-    tkPlot(df, 10)
+    tkPlot(df, 1)
 
 
 if __name__ == '__main__' :

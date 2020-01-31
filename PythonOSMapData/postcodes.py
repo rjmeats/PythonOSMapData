@@ -472,20 +472,26 @@ def displayExample(df, example=None) :
     print()
     format="Vertical"
 
+    founddf = df [df['Postcode'] == examplePostCode]
+    if founddf.empty :
+        print(f'*** Postcode not found : {examplePostCode}')
+        return
+
     if format == "Vertical" :
         # Print vertically, so all columns are listed
-        print(df [df['Postcode'] == examplePostCode] .transpose(copy=True))
+        print(founddf.transpose(copy=True))
     elif format == "Horizontal" :
         # Print horizontally, no wrapping, just using the available space, omitting columns in the middle
         # if needed. (The default setting.)
-        print(df [df['Postcode'] == examplePostCode])
+        print(founddf)
     elif format == "HorizontalWrap" :
         # Print horizontally, wrapping on to the next line, so all columns are listed
         pd.set_option('display.expand_frame_repr', False)
-        print(df [df['Postcode'] == examplePostCode])
+        print(founddf)
         pd.set_option('display.expand_frame_repr', True)        # Reset to default.
     else :
         print('f*** Unrecognised output row format: {format}')
+        print(founddf)
 
     print()
     print('###############################################################')

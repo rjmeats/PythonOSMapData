@@ -577,6 +577,8 @@ def writeCachedDataFrame(tmpDir, df) :
 
 def regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile) :
 
+    print('Regenerating postcode DataFrame from source data files ..')
+
     dfEmpty = pd.DataFrame()
 
     if not os.path.isfile(OSZipFile) :
@@ -646,6 +648,11 @@ def regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile) :
     fullOutputColumns = (list(df.columns)).copy()
     fullOutputColumns.extend(['Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name'])
     dfDenormalised = dfDenormalised[fullOutputColumns]
+
+    startTime = pd.Timestamp.now()
+    dfDenormalised = addPostCodeBreakdown(dfDenormalised)
+    took = pd.Timestamp.now()-startTime
+    print(f'Took {took.total_seconds()} seconds to add postcode breakdown columns')
 
     examineLocationColumns(dfDenormalised)
 
@@ -848,35 +855,61 @@ def cv2plot(df, density=100) :
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-import re
-pcreDigit = '[0-9]'
-pcDigitPattern = re.compile(pcreDigit)
-pcreLetter = '[A-Z]'
-pcLetterPattern = re.compile(pcreLetter)
-pcreSpace = r'\s'
-pcSpacePattern = re.compile(pcreSpace)
+rowsProcessed = 0
+expectedPatterns = [
+    'X9##9XX',
+    'X99#9XX',
+    'X9X#9XX',
+    'XX9#9XX',
+    'XX999XX',
+    'XX9X9XX'
+]
 
+import re
+pcDigitPattern = re.compile('[0-9]')
+pcLetterPattern = re.compile('[A-Z]')
+pcSpacePattern = re.compile(r'\s')
 
 def getPattern(row) :
+
+    global rowsProcessed
+
+    # print(row)
     pc = row['Postcode']
     area = row['PostcodeArea']
-    result = pc + "-" + area
 
-    result = pcDigitPattern.sub('9', pc)
-    result = pcLetterPattern.sub('X', result)
-    result = pcSpacePattern.sub('#', result)
+    pattern = pcDigitPattern.sub('9', pc)
+    pattern = pcLetterPattern.sub('X', pattern)
+    pattern = pcSpacePattern.sub('#', pattern)
 
-    areaPattern = pcDigitPattern.sub('9', area)
-    areaPattern = pcLetterPattern.sub('X', areaPattern)
-    areaPattern = pcSpacePattern.sub('#', areaPattern)
+    # Overall pattern should be one of 6 known ones
+    
+    if pattern not in expectedPatterns :
+        print(f'*** unexpected pattern for {pc} : {pattern}')
 
-    result = result + '=' + areaPattern
-
+    # inward = last three digits
+    # outward = the rest
+    # outward part from the first digit onwards = district
+    # remainder of outward part is the area code, and should match the value already provded
+    inward = pc[-3:].strip()    
     outward = pc[0:-3].strip()
-    #print(f'In getPattern: {pc} + {area} = {result} : outward = {outward}')
-    return result
+    district = ''
+    a = ''
+    for i, c in enumerate(outward) :
+        if c.isdigit() :
+            district = outward[i:]
+            break
+        else :
+            a += c
 
-    # How to return values for multiple columns ? Tuple doesn't seem to work
+    if a != area :
+        print(f'*** area != area for {pc} : {a} : {area}')
+
+    rowsProcessed += 1
+    if rowsProcessed % 100000 == 0 :
+        print(f'.. processed {rowsProcessed} postcode patterns')
+    return { 'Pattern' : pattern, 'Outward' : outward, 'District' : district, 'Inward' : inward }
+
 """
          Postcode
 New
@@ -886,46 +919,41 @@ X9X#9XX      9511
 XX9#9XX    683419
 XX999XX    797826
 XX9X9XX     10728
-
-            Postcode
-New
-X9##9XX=X      44363
-X99#9XX=X     156642
-X9X#9XX=X       9511
-XX9#9XX=XX    683419
-XX999XX=XX    797826
-XX9X9XX=XX     10728
 """
 
-# All end 9XX. Variety of starts:
-# X9
-# X99
-# X9X
-# XX9
-# XX99
-# XX9X
-#
-# Really 3 variants X9, X99, X9X  repeated with leading XX where the postal area has two letters.
-# To get the outward part of the postcode, remove 9XX from end, trim spaces
+def addPostCodeBreakdown(df) :
 
+    global rowsProcessed
 
-def assessPostCodeBreakdown(df) :
+    # Look at each postcode and convert to a pattern, extract subcomponents of the postcode into separate columns
+    # NB This takes a few minutes for the full set of rows.
 
-    # Look at each postcode and convert to a pattern.
-    # 
-
-    # df['pattern'] = 
-    dfTrial = df
-    #print()
-    #print(dfTrial)
-    dfTrial['New'] = dfTrial.apply(getPattern, axis=1)      # NB This adds to df too
+    dfBreakdown = df.copy()
+    rowsProcessed = 0
     print()
-    print(dfTrial)
-    dfG = dfTrial[['Postcode', 'New']].groupby(['New'], as_index=True).count()
+    print(f'.. generating extra postcode columns ..')
+    extradf = dfBreakdown[['Postcode', 'Post Town', 'PostcodeArea']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
+    print()
+    print(f'.. concatenating extra postcode columns ..')
+    df = pd.concat([dfBreakdown, extradf], axis='columns')
+    print()
+    print(f'.. Postcodes grouped by pattern ..')
+    dfG = df[['Postcode', 'Pattern']].groupby(['Pattern'], as_index=True).count()
     print()
     print(dfG)
-    print()
-    print(df)
+    with pd.option_context('display.max_rows', 20000):
+        print()
+        print(f'.. Postcodes grouped by Area and Outward ..')
+        dfG = df[['Postcode', 'PostcodeArea', 'Post Town', 'Outward']].groupby(['PostcodeArea', 'Post Town', 'Outward'], as_index=True).count()
+        print()
+        print(dfG)
+        print()
+        print(f'.. Unique Districts per Area ..')
+        dfG = df[['Postcode', 'PostcodeArea', 'Post Town', 'Outward']].groupby(['PostcodeArea', 'Post Town'], as_index=True)['Outward'].nunique()
+        print()
+        print(dfG)
+
+    return df
 
 def main(args) :
 
@@ -957,8 +985,6 @@ def main(args) :
     print(df)
 
     displayExample(df)
-
-    assessPostCodeBreakdown(df)
 
     #aggregate(df)
     print()

@@ -496,6 +496,15 @@ def displayExample(df, example=None) :
     print()
     print('###############################################################')
 
+    e = founddf['Eastings']
+    n = founddf['Northings']
+    dimension = 25000
+    bl = (int(e-dimension/2), int(n-dimension/2))
+    tr = (int(e+dimension/2), int(n+dimension/2))
+    print(f'bl = {bl} : tr = {tr}')
+
+    cv2plotSpecific(df, title=example, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+
 
 # Code point Open User Guide explains the Quality values as follows:
 # https://www.ordnancesurvey.co.uk/documents/product-support/user-guide/code-point-open-user-guide.pdf
@@ -803,7 +812,7 @@ def convertToBGR(imgArray) :
     """ Converts a 3-D [y,x,RGB] numpy array to [y,x,BGR] format, (for use with CV2) """
     return imgArray[:,:,::-1]
 
-def cv2plotSpecific(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
+def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
     # For CV2 we need to reverse the colour ordering of the array to BGR
     from cv2 import cv2
 
@@ -821,8 +830,6 @@ def cv2plotSpecific(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), d
 
     print(f'.. scale = {scaling_factor} : canvas_width = {canvas_width}')
 
-    #canvas_width = 800
-    #canvas_height = 1000            # Need to get to 1213165 to cover Shetland, 
     img = newImageArray(canvas_height, canvas_width)
 
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
@@ -832,30 +839,35 @@ def cv2plotSpecific(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), d
 
     # Could do bulk e/n scaling first too in bulk ?
     # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
-    dfSlice = df.iloc[::density]
-    print(dfSlice)
-    for index, r in enumerate(zip(dfSlice['Eastings'], dfSlice['Northings'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
-        (e, n, pc, area) = r
-        if e == 0 :
-            continue
+    if density != 1 :
+        dfSlice = df.copy().iloc[::density]
+    else :
+        dfSlice = df.copy()
+    #print(dfSlice)
 
-        # Convert e and n values (metres) to a position within our canvas, allowing for the specified
-        # corner positions and the scale we have determined.
+    dfSlice['e_scaled'] = (dfSlice['Eastings'] - e0) // scaling_factor
+    dfSlice['n_scaled'] = (dfSlice['Northings'] - n0) // scaling_factor
+    #print(dfSlice)
 
-        e_offset  = e - e0
-        n_offset  = n - n0
-        e_scaled = int(e_offset // scaling_factor)
-        n_scaled = canvas_height - int(n_offset // scaling_factor)
+    dfSlice = dfSlice [ dfSlice['Eastings'] > 0 ]
+    dfSlice = dfSlice [ (dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)]
+    dfSlice = dfSlice [ (dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)]
+
+    # Why can't the above be combined into one big combination ?
+    # Also, any way to check n_scale and e_scaled are in a range ?
+    #dfSlice = dfSlice [ dfSlice['Eastings'] > 0 &
+    #                    ((dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)) &
+    #                    ((dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)) ]
+
+    for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
+        (es, ns, pc, area) = r
         if index % (100000/density) == 0 :
-            print(index, e_scaled, n_scaled, pc)
-        if n_scaled >=0 and n_scaled < canvas_height :
-            if e_scaled >=0 and e_scaled < canvas_width :
-            #print(index, e_scaled, n_scaled, pc)
-                colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
-                cv2.circle(img, center=(e_scaled,n_scaled), radius=1, color=colour, thickness=-1)
+            print(index, es, ns, pc)
+        colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
+        cv2.circle(img, center=(es, canvas_height - ns), radius=1, color=colour, thickness=-1)
 
-    title = 'Title'
-    cv2.imshow(title, convertToBGR(img.copy()))
+    cvtitle = 'Title' if title == None else title
+    cv2.imshow(cvtitle, convertToBGR(img))
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
@@ -1018,6 +1030,21 @@ def addPostCodeBreakdown(df) :
 
     return df
 
+import nationalgrid as ng
+def showGridSquare(df, sqName='TQ') :
+    sq = ng.dictGridSquares[sqName]        
+    print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
+    print(f'{sq.getPrintGridString()}')
+
+    bl = (sq.eastingIndex * 100 * 1000, sq.northingIndex * 100 * 1000)
+    tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
+    print(f'bl = {bl} : tr = {tr}')
+
+    cv2plotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+
+def showAllGB(df) :
+    cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
+
 OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
 tmpDir = os.path.dirname(OSZipFile) + '/tmp'
 
@@ -1054,20 +1081,10 @@ def main(args) :
     print()
 
     #tkPlot(df, 1)
-
-    import nationalgrid as ng
-    sqName = 'SO'
-    sq = ng.dictGridSquares[sqName]        
-    print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
-    print(f'{sq.getPrintGridString()}')
-
-    bl = (sq.eastingIndex * 100 * 1000, sq.northingIndex * 100 * 1000)
-    tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
-    print(f'bl = {bl} : tr = {tr}')
-
     #cv2plot(df, density=1)
-    cv2plotSpecific(df, density=1, bottom_l=bl, top_r=tr)
 
+    showGridSquare(df, 'TQ')
+    showAllGB(df)
 
 if __name__ == '__main__' :
     main(sys.argv)

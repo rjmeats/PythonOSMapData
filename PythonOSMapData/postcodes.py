@@ -803,6 +803,63 @@ def convertToBGR(imgArray) :
     """ Converts a 3-D [y,x,RGB] numpy array to [y,x,BGR] format, (for use with CV2) """
     return imgArray[:,:,::-1]
 
+def cv2plotSpecific(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
+    # For CV2 we need to reverse the colour ordering of the array to BGR
+    from cv2 import cv2
+
+    e0 = bottom_l[0]
+    e1 = top_r[0]
+    n0 = bottom_l[1]
+    n1 = top_r[1]
+    e_extent = e1 - e0
+    n_extent = n1 - n0
+
+    print(f'canvas_h = {canvas_h} : bottom_l = {bottom_l} : top_r = {top_r}')
+    canvas_height = int(canvas_h)                        # pixels
+    canvas_width = int(canvas_h * e_extent / n_extent)   # pixels
+    scaling_factor = n_extent / canvas_h            # metres per pixel
+
+    print(f'.. scale = {scaling_factor} : canvas_width = {canvas_width}')
+
+    #canvas_width = 800
+    #canvas_height = 1000            # Need to get to 1213165 to cover Shetland, 
+    img = newImageArray(canvas_height, canvas_width)
+
+    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+
+    # Vary width of oval dot depending on density ????
+    # Do we need to use 'oval's to do the plotting, rather than points ?
+
+    # Could do bulk e/n scaling first too in bulk ?
+    # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
+    dfSlice = df.iloc[::density]
+    print(dfSlice)
+    for index, r in enumerate(zip(dfSlice['Eastings'], dfSlice['Northings'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
+        (e, n, pc, area) = r
+        if e == 0 :
+            continue
+
+        # Convert e and n values (metres) to a position within our canvas, allowing for the specified
+        # corner positions and the scale we have determined.
+
+        e_offset  = e - e0
+        n_offset  = n - n0
+        e_scaled = int(e_offset // scaling_factor)
+        n_scaled = canvas_height - int(n_offset // scaling_factor)
+        if index % (100000/density) == 0 :
+            print(index, e_scaled, n_scaled, pc)
+        if n_scaled >=0 and n_scaled < canvas_height :
+            if e_scaled >=0 and e_scaled < canvas_width :
+            #print(index, e_scaled, n_scaled, pc)
+                colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
+                cv2.circle(img, center=(e_scaled,n_scaled), radius=1, color=colour, thickness=-1)
+
+    title = 'Title'
+    cv2.imshow(title, convertToBGR(img.copy()))
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
 def cv2plot(df, density=100) :
     # For CV2 we need to reverse the colour ordering of the array to BGR
     from cv2 import cv2
@@ -813,7 +870,7 @@ def cv2plot(df, density=100) :
 
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
 
-    london = True
+    london = False
     if london :
         scaling_factor = 100
         offset_e = -480000
@@ -997,7 +1054,19 @@ def main(args) :
     print()
 
     #tkPlot(df, 1)
-    #cv2plot(df, 1)
+
+    import nationalgrid as ng
+    sqName = 'SO'
+    sq = ng.dictGridSquares[sqName]        
+    print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
+    print(f'{sq.getPrintGridString()}')
+
+    bl = (sq.eastingIndex * 100 * 1000, sq.northingIndex * 100 * 1000)
+    tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
+    print(f'bl = {bl} : tr = {tr}')
+
+    #cv2plot(df, density=1)
+    cv2plotSpecific(df, density=1, bottom_l=bl, top_r=tr)
 
 
 if __name__ == '__main__' :

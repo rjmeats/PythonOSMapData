@@ -961,10 +961,11 @@ def addPostCodeBreakdown(df) :
 
     return df
 
+OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
+tmpDir = os.path.dirname(OSZipFile) + '/tmp'
+
 def main(args) :
 
-    OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
-    tmpDir = os.path.dirname(OSZipFile) + '/tmp'
     postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
 
     # Decide whether to generate a new dataframe or read a cached one from file. Any sort of command line argument

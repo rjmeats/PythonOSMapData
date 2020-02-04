@@ -503,7 +503,7 @@ def displayExample(df, example=None) :
     tr = (int(e+dimension/2), int(n+dimension/2))
     print(f'bl = {bl} : tr = {tr}')
 
-    cv2plotSpecific(df, title=example, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+    cv2plotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
 
 
 # Code point Open User Guide explains the Quality values as follows:
@@ -812,10 +812,7 @@ def convertToBGR(imgArray) :
     """ Converts a 3-D [y,x,RGB] numpy array to [y,x,BGR] format, (for use with CV2) """
     return imgArray[:,:,::-1]
 
-def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
-    # For CV2 we need to reverse the colour ordering of the array to BGR
-    from cv2 import cv2
-
+def getScaledPlot(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
     e0 = bottom_l[0]
     e1 = top_r[0]
     n0 = bottom_l[1]
@@ -830,9 +827,45 @@ def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000
 
     print(f'.. scale = {scaling_factor} : canvas_width = {canvas_width}')
 
-    img = newImageArray(canvas_height, canvas_width)
+    # Could do bulk e/n scaling first too in bulk ?
+    # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
+    if density != 1 :
+        dfSlice = df.copy().iloc[::density]
+    else :
+        dfSlice = df.copy()
+    #print(dfSlice)
 
-    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+    dfSlice['e_scaled'] = (dfSlice['Eastings'] - e0) // scaling_factor
+    dfSlice['n_scaled'] = (dfSlice['Northings'] - n0) // scaling_factor
+    #print(dfSlice)
+
+    dfSlice = dfSlice [ dfSlice['Eastings'] > 0 ]
+    dfSlice = dfSlice [ (dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)]
+    dfSlice = dfSlice [ (dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)]
+
+    # Why can't the above be combined into one big combination ?
+    # Also, any way to check n_scale and e_scaled are in a range ?
+    #dfSlice = dfSlice [ dfSlice['Eastings'] > 0 &
+    #                    ((dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)) &
+    #                    ((dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)) ]
+
+    return canvas_height, canvas_width, dfSlice
+
+def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
+    """
+    e0 = bottom_l[0]
+    e1 = top_r[0]
+    n0 = bottom_l[1]
+    n1 = top_r[1]
+    e_extent = e1 - e0
+    n_extent = n1 - n0
+
+    print(f'canvas_h = {canvas_h} : bottom_l = {bottom_l} : top_r = {top_r}')
+    canvas_height = int(canvas_h)                        # pixels
+    canvas_width = int(canvas_h * e_extent / n_extent)   # pixels
+    scaling_factor = n_extent / canvas_h            # metres per pixel
+
+    print(f'.. scale = {scaling_factor} : canvas_width = {canvas_width}')
 
     # Vary width of oval dot depending on density ????
     # Do we need to use 'oval's to do the plotting, rather than points ?
@@ -858,77 +891,28 @@ def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000
     #dfSlice = dfSlice [ dfSlice['Eastings'] > 0 &
     #                    ((dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)) &
     #                    ((dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)) ]
+    """
+
+    # For CV2 we need to reverse the colour ordering of the array to BGR
+
+    from cv2 import cv2
+
+    canvas_height, canvas_width, dfSlice = getScaledPlot(df, canvas_h, bottom_l, top_r, density)
+    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+    img = newImageArray(canvas_height, canvas_width)
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
         if index % (100000/density) == 0 :
             print(index, es, ns, pc)
         colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
-        cv2.circle(img, center=(es, canvas_height - ns), radius=1, color=colour, thickness=-1)
+        cv2.circle(img, center=(es, canvas_height-ns), radius=1, color=colour, thickness=-1)
 
     cvtitle = 'Title' if title == None else title
     cv2.imshow(cvtitle, convertToBGR(img))
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-
-def cv2plot(df, density=100) :
-    # For CV2 we need to reverse the colour ordering of the array to BGR
-    from cv2 import cv2
-
-    canvas_width = 800
-    canvas_height = 1000            # Need to get to 1213165 to cover Shetland, 
-    img = newImageArray(canvas_height, canvas_width)
-
-    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
-
-    london = False
-    if london :
-        scaling_factor = 100
-        offset_e = -480000
-        offset_n = -120000
-    else :
-        scaling_factor = 1000
-        offset_e = 0
-        offset_n = 0
-
-    # Vary width of oval dot depending on density ????
-    # Do we need to use 'oval's to do the plotting, rather than points ?
-
-    # Different ways to work through the set of postcodes, row by row.
-    useZip = True
-    if useZip :
-        # Faster than using iterrows.
-        # Could do bulk e/n scaling first too in bulk ?
-        # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
-        dfSlice = df.iloc[::density]
-        print(dfSlice)
-        for index, r in enumerate(zip(dfSlice['Eastings'], dfSlice['Northings'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
-            (e, n, pc, area) = r
-            if e == 0 :
-                continue
-            e_offset  = e + offset_e
-            n_offset  = n + offset_n
-            e_scaled = e_offset // scaling_factor
-            n_scaled = canvas_height - n_offset // scaling_factor
-            if index % (100000/density) == 0 :
-                print(index, e_scaled, n_scaled, pc)
-            if n_scaled >=0 and n_scaled < canvas_height :
-                if e_scaled >=0 and e_scaled < canvas_width :
-                #print(index, e_scaled, n_scaled, pc)
-                    colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
-                    #colour = RGBColourGreen = (0,255,0)
-                    #w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=0)
-                    #w.create_line(e_scaled,n_scaled,e_scaled+1,n_scaled, fill=colour, width=1)
-                    thickness = -1      # negative == fill
-                    lineType = 8
-                    shift = 0
-                    cv2.circle(img, center=(e_scaled,n_scaled), radius=1, color=colour, thickness=thickness)
-
-    title = 'Title'
-    cv2.imshow(title, convertToBGR(img.copy()))
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
 
 rowsProcessed = 0
 expectedPatterns = [

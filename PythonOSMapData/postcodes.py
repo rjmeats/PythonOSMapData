@@ -461,7 +461,7 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10)
 
     return dfJoin
 
-def displayExample(df, example=None) :
+def displayExample(df, example=None, plotter='CV2', dimension=25) :
     # Print out details of an example postcode (Trent Bridge).
     examplePostCode = 'NG2 6AG' if example == None else example
 
@@ -498,12 +498,15 @@ def displayExample(df, example=None) :
 
     e = founddf['Eastings']
     n = founddf['Northings']
-    dimension = 25000
-    bl = (int(e-dimension/2), int(n-dimension/2))
-    tr = (int(e+dimension/2), int(n+dimension/2))
+    dimension_m = dimension * 1000       # m
+    bl = (int(e-dimension_m/2), int(n-dimension_m/2))
+    tr = (int(e+dimension_m/2), int(n+dimension_m/2))
     print(f'bl = {bl} : tr = {tr}')
 
-    cv2plotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+    if plotter == 'CV2' :
+        cv2plotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+    elif plotter == 'Tk' :
+        tkplotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
 
 
 # Code point Open User Guide explains the Quality values as follows:
@@ -701,6 +704,8 @@ def assignAreasToColourGroups(df) :
     # ???? Algorithm to assign areas to colour groups so that close areas don't use the same colour. 
     # For now just use lots of colours and rely on chance ! 
     # https://www.tcl.tk/man/tcl8.4/TkCmd/colors.htm
+    # Doesn't seem to work very well = e.g. YO (York) and TS (Teeside) have same colour, and also WC and SE in London. Also
+    # PE (Peterborough) and MK (Milton Keynes). IG/RM/SS form a triple ! Probably more ..
     availableColours = [ "red", "blue", "green", "yellow", "orange", "purple", "brown", 
                             "pink", "cyan", "magenta", "violet", "grey"]
     availableColoursRGB = [ (255,0,0), (0,0,255), (0,255,0), (255,255,0), (255,165,0), (160,32,240), (165,42,42), 
@@ -726,81 +731,50 @@ def assignAreasToColourGroups(df) :
 
     return d, dRGB
 
-def tkPlot(df, density=100) :
 
-    # Dictionary to allow us to show different Postcode Areas in different colours.
+tkObjDict = {}
+dfClickLookup = None
+
+# https://stackoverflow.com/questions/20399243/display-message-when-hovering-over-something-with-mouse-cursor-in-python
+
+def onObjectClick(event):                  
+    print('Got tk object click', event.x, event.y)
+    #print(event.widget.find_closest(event.x, event.y))
+    objID = event.widget.find_closest(event.x, event.y)[0]
+    #print(type(objID))
+    pc = tkObjDict[objID]
+    pcinfo = dfClickLookup [dfClickLookup['Postcode'] == pc]
+
+    print(f'obj={objID} : pc={pc}')
+    print(pcinfo)
+
+def tkplotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
+
+    canvas_height, canvas_width, dfSlice = getScaledPlot(df, canvas_h, bottom_l, top_r, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
 
-    master = Tk()
-    canvas_width = 800
-    canvas_height = 1000            # Need to get to 1213165 to cover Shetland, 
-
-    london = True
-    if london :
-        scaling_factor = 100
-        offset_e = -480000
-        offset_n = -120000
-    else :
-        scaling_factor = 1000
-        offset_e = 0
-        offset_n = 0
-
-    w = Canvas(master, 
-            width=canvas_width,
-            height=canvas_height)
-    w.pack()
+    global dfClickLookup
+    dfClickLookup = df
 
     # Vary width of oval dot depending on density ????
     # Do we need to use 'oval's to do the plotting, rather than points ?
 
+    # https://effbot.org/tkinterbook/canvas.htm
+    master = Tk()
+    w = Canvas(master, width=canvas_width, height=canvas_height)
+    w.pack()
 
-    # Different ways to work through the set of postcodes, row by row.
-    useZip = True
-    if useZip :
-        # Faster than using iterrows.
-        # Could do bulk e/n scaling first too in bulk ?
-        # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
-        dfSlice = df.iloc[::density]
-        print(dfSlice)
-        for index, r in enumerate(zip(dfSlice['Eastings'], dfSlice['Northings'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
-            (e, n, pc, area) = r
-            if e == 0 :
-                continue
-            e_offset  = e + offset_e
-            n_offset  = n + offset_n
-            e_scaled = e_offset // scaling_factor
-            n_scaled = canvas_height - n_offset // scaling_factor
-            if index % (100000/density) == 0 :
-                print(index, e_scaled, n_scaled, pc)
-            if n_scaled >=0 and n_scaled < canvas_height :
-                if e_scaled >=0 and e_scaled < canvas_width :
-                #print(index, e_scaled, n_scaled, pc)
-                    colour = areaColourDict.get(area, pcDefaultColour)
-                    w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=0)
-                    #w.create_line(e_scaled,n_scaled,e_scaled+1,n_scaled, fill=colour, width=1)
-    else :
-        for index, row in df[::density].iterrows():
-            e = getattr(row, "Eastings")
-            n = getattr(row, "Northings")
-            pc = getattr(row, "Postcode")
-            area = getattr(row, "PostcodeArea")
-            if e == 0 :
-                continue
-            e_scaled = e // scaling_factor
-            n_scaled = canvas_height - n // scaling_factor
-            if index % 100000 == 0 :
-                print(index, e_scaled, n_scaled, pc)
-            e_scaled += e_offset
-            n_scaled += n_offset
-            if n_scaled >=0 and n_scaled < canvas_height :
-                #print(index, e_scaled, n_scaled, pc)
-                colour = areaColourDict.get(area, pcDefaultColour)
-                w.create_oval(e_scaled,n_scaled,e_scaled,n_scaled, fill=colour, outline=colour, width=2)
-
-    # Display the tk plot
+    for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
+        (es, ns, pc, area) = r
+        if index % (100000/density) == 0 :
+            print(index, es, ns, pc)
+        colour = areaColourDict.get(area, pcDefaultColour)
+        objid = w.create_oval(es,canvas_height-ns,es,canvas_height-ns, fill=colour, outline=colour, width=2)
+        w.tag_bind(objid, '<ButtonPress-1>', onObjectClick)    
+        #print(f'Adding objid: {objid}')
+        tkObjDict[objid] = pc
 
     mainloop()
-
 
 import numpy as np
 
@@ -851,55 +825,45 @@ def getScaledPlot(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), den
 
     return canvas_height, canvas_width, dfSlice
 
+# Map 
+from cv2 import cv2
+
+img = None
+imgLookupIndex = None
+
+
+def CV2ClickEvent(event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        yy = img.shape[0] - y
+        print (f'CV2 event: event={event}, x={x}, y={y} == {yy}, flags={flags}, param={param}')
+        # y is first dimension of image - need to subtract from height
+        # NB RGB in img array, convertToBGR converts just before CV2 sees it
+        red = img[y,x,0]
+        green = img[y,x,1]
+        blue = img[y,x,2]
+        print (f'{red} : {blue} : {green}')
+        if red == 255 and green == 255 and blue == 255 :
+            print('.. white')
+        else :
+            print('.. point - looking up')
+            index = imgLookupIndex[yy,x]
+            pcinfo = dfClickLookup.iloc[index]
+            print(f'index={index}')
+            print(pcinfo)
+
+
 def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
-    """
-    e0 = bottom_l[0]
-    e1 = top_r[0]
-    n0 = bottom_l[1]
-    n1 = top_r[1]
-    e_extent = e1 - e0
-    n_extent = n1 - n0
-
-    print(f'canvas_h = {canvas_h} : bottom_l = {bottom_l} : top_r = {top_r}')
-    canvas_height = int(canvas_h)                        # pixels
-    canvas_width = int(canvas_h * e_extent / n_extent)   # pixels
-    scaling_factor = n_extent / canvas_h            # metres per pixel
-
-    print(f'.. scale = {scaling_factor} : canvas_width = {canvas_width}')
-
-    # Vary width of oval dot depending on density ????
-    # Do we need to use 'oval's to do the plotting, rather than points ?
-
-    # Could do bulk e/n scaling first too in bulk ?
-    # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
-    if density != 1 :
-        dfSlice = df.copy().iloc[::density]
-    else :
-        dfSlice = df.copy()
-    #print(dfSlice)
-
-    dfSlice['e_scaled'] = (dfSlice['Eastings'] - e0) // scaling_factor
-    dfSlice['n_scaled'] = (dfSlice['Northings'] - n0) // scaling_factor
-    #print(dfSlice)
-
-    dfSlice = dfSlice [ dfSlice['Eastings'] > 0 ]
-    dfSlice = dfSlice [ (dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)]
-    dfSlice = dfSlice [ (dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)]
-
-    # Why can't the above be combined into one big combination ?
-    # Also, any way to check n_scale and e_scaled are in a range ?
-    #dfSlice = dfSlice [ dfSlice['Eastings'] > 0 &
-    #                    ((dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)) &
-    #                    ((dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)) ]
-    """
-
-    # For CV2 we need to reverse the colour ordering of the array to BGR
-
-    from cv2 import cv2
 
     canvas_height, canvas_width, dfSlice = getScaledPlot(df, canvas_h, bottom_l, top_r, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+
+    global img
+    global dfClickLookup
+    global imgLookupIndex
     img = newImageArray(canvas_height, canvas_width)
+    imgLookupIndex = np.full((canvas_height+2, canvas_width+2), 0, dtype='int32')   # +2s partly because of size of circle,
+    # but also getting some out of bounds errors before [-1,0,1] adjustment was there - because ????
+    dfClickLookup = dfSlice
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
@@ -907,9 +871,16 @@ def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000
             print(index, es, ns, pc)
         colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
         cv2.circle(img, center=(es, canvas_height-ns), radius=1, color=colour, thickness=-1)
+        # Record item against a small 3x3 square of points, not just the central one. Why is this necessary,
+        # how does it relate to the radius value ? What about close postcodes overwriting each other ?
+        for i in [-1,0,1] :
+            for j in [-1,0,1] :
+                imgLookupIndex[ns+i, es+j] = index
 
     cvtitle = 'Title' if title == None else title
+    # For CV2 we need to reverse the colour ordering of the array to BGR
     cv2.imshow(cvtitle, convertToBGR(img))
+    cv2.setMouseCallback(cvtitle, CV2ClickEvent)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
@@ -1015,19 +986,25 @@ def addPostCodeBreakdown(df) :
     return df
 
 import nationalgrid as ng
-def showGridSquare(df, sqName='TQ') :
+def showGridSquare(df, sqName='TQ', plotter='CV2') :
     sq = ng.dictGridSquares[sqName]        
     print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
     print(f'{sq.getPrintGridString()}')
-
+    
     bl = (sq.eastingIndex * 100 * 1000, sq.northingIndex * 100 * 1000)
     tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
     print(f'bl = {bl} : tr = {tr}')
 
-    cv2plotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+    if plotter == 'CV2' :
+        cv2plotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+    else :
+        tkplotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
 
-def showAllGB(df) :
-    cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
+def showAllGB(df, plotter='CV2') :
+    if plotter == 'CV2' :
+        cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
+    else :
+        tkplotSpecific(df, title='All GB', canvas_h=800, density=10)
 
 OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
 tmpDir = os.path.dirname(OSZipFile) + '/tmp'
@@ -1059,16 +1036,13 @@ def main(args) :
     print()
     print(df)
 
-    displayExample(df)
-
     #aggregate(df)
     print()
 
-    #tkPlot(df, 1)
-    #cv2plot(df, density=1)
-
-    showGridSquare(df, 'TQ')
-    showAllGB(df)
+    plotwith = 'CV2'
+    displayExample(df, plotter=plotwith, example='NW9 9LY', dimension=10)
+    showGridSquare(df, 'TQ', plotter=plotwith)
+    showAllGB(df, plotter=plotwith)
 
 if __name__ == '__main__' :
     main(sys.argv)

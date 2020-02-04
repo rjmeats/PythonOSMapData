@@ -696,20 +696,41 @@ def assignAreasToColourGroups(df) :
                 Min_N = ('Northings', 'min'),
                 Max_N = ('Northings', 'max')
                     )
-    #print()
-    #print('Eastings and Northing ranges by Postcode area:')
-    #print()
-    #print(dfAreaExtents)
+    dfAreaExtents.sort_values('Min_E', inplace=True)
+    print()
+    print('Eastings and Northing ranges by Postcode area:')
+    print()
+    print(type(dfAreaExtents))
+    print()
+    print(dfAreaExtents)
 
     # ???? Algorithm to assign areas to colour groups so that close areas don't use the same colour. 
     # For now just use lots of colours and rely on chance ! 
     # https://www.tcl.tk/man/tcl8.4/TkCmd/colors.htm
     # Doesn't seem to work very well = e.g. YO (York) and TS (Teeside) have same colour, and also WC and SE in London. Also
     # PE (Peterborough) and MK (Milton Keynes). IG/RM/SS form a triple ! Probably more ..
+    # https://stackoverflow.com/questions/309149/generate-distinctly-different-rgb-colors-in-graphs has lots of colours about half way down
     availableColours = [ "red", "blue", "green", "yellow", "orange", "purple", "brown", 
-                            "pink", "cyan", "magenta", "violet", "grey"]
+                            "pink", "cyan2", "magenta2", "violet", "grey"]
     availableColoursRGB = [ (255,0,0), (0,0,255), (0,255,0), (255,255,0), (255,165,0), (160,32,240), (165,42,42), 
-                            (255,192,203), (0,255,255), (255,0,255), (238,130,238), (190,190,190)]
+                            (255,192,203), (0,238,238), (238,0,238), (238,130,238), (190,190,190)]
+
+    # Soften the colours
+    ac2 = []
+    for c in availableColoursRGB :
+        n = [0,0,0]
+        for i in (0,1,2) :
+            ci = c[i]
+            if ci < 255 :
+                ci = int(ci + (255-ci) * 0.5)
+            n[i] = ci
+        ac2.append( (n[0],n[1],n[2]))
+
+    print(ac2)
+    availableColoursRGB = ac2
+
+
+
     numGroups = len(availableColours)
 
     # Set up a list of lists, one per colour
@@ -851,7 +872,6 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-
 def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
 
     canvas_height, canvas_width, dfSlice = getScaledPlot(df, canvas_h, bottom_l, top_r, density)
@@ -870,7 +890,14 @@ def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000
         if index % (100000/density) == 0 :
             print(index, es, ns, pc)
         colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
-        cv2.circle(img, center=(es, canvas_height-ns), radius=1, color=colour, thickness=-1)
+        #circle radius = 0 == single pixel. 
+        #                          x
+        # radius=1 gives a cross: xxx
+        #                          x
+        # cv2.circle(img, center=(es, canvas_height-ns), radius=0, color=colour, thickness=-1)
+
+        x = 2   # Seems to work well
+        cv2.rectangle(img, pt1=(es, canvas_height-ns), pt2=(es+x, canvas_height-ns+x), color=colour, thickness=-1)
         # Record item against a small 3x3 square of points, not just the central one. Why is this necessary,
         # how does it relate to the radius value ? What about close postcodes overwriting each other ?
         for i in [-1,0,1] :
@@ -884,6 +911,7 @@ def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+    return img
 
 rowsProcessed = 0
 expectedPatterns = [
@@ -986,7 +1014,7 @@ def addPostCodeBreakdown(df) :
     return df
 
 import nationalgrid as ng
-def showGridSquare(df, sqName='TQ', plotter='CV2') :
+def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
     sq = ng.dictGridSquares[sqName]        
     print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
     print(f'{sq.getPrintGridString()}')
@@ -996,13 +1024,26 @@ def showGridSquare(df, sqName='TQ', plotter='CV2') :
     print(f'bl = {bl} : tr = {tr}')
 
     if plotter == 'CV2' :
-        cv2plotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+        img = cv2plotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+        if savefilelocation != None :
+            filename = savefilelocation + '/' + 'postcodes.' + sqName + '.cv.png'
+            writeImageArrayToFileUsingCV2(filename, img)
     else :
         tkplotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
 
-def showAllGB(df, plotter='CV2') :
+def writeImageArrayToFileUsingCV2(filename, img) :
+    from cv2 import cv2
+    if cv2.imwrite(filename, convertToBGR(img)) :
+        print(f'Image file saved as: {filename}')
+    else :
+        print(f'*** Failed to save image file as: {filename}')
+
+def showAllGB(df, plotter='CV2', savefilelocation=None) :
     if plotter == 'CV2' :
-        cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
+        img = cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
+        if savefilelocation != None :
+            filename = savefilelocation + '/' + 'postcodes.allGB.cv.png'
+            writeImageArrayToFileUsingCV2(filename, img)
     else :
         tkplotSpecific(df, title='All GB', canvas_h=800, density=10)
 
@@ -1039,10 +1080,11 @@ def main(args) :
     #aggregate(df)
     print()
 
+    outputFileLocation = './pngs'
     plotwith = 'CV2'
-    displayExample(df, plotter=plotwith, example='NW9 9LY', dimension=10)
-    showGridSquare(df, 'TQ', plotter=plotwith)
-    showAllGB(df, plotter=plotwith)
+    displayExample(df, plotter=plotwith, dimension=10)
+    showGridSquare(df, 'TQ', plotter=plotwith, savefilelocation=outputFileLocation)
+    showAllGB(df, plotter=plotwith, savefilelocation=outputFileLocation)
 
 if __name__ == '__main__' :
     main(sys.argv)

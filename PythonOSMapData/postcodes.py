@@ -496,18 +496,40 @@ def displayExample(df, example=None, plotter='CV2', dimension=25) :
     print()
     print('###############################################################')
 
-    e = founddf['Eastings']
-    n = founddf['Northings']
-    dimension_m = dimension * 1000       # m
+    showPostcode(df, examplePostCode, plotter='CV2', savefilelocation=None)
+
+    #showAround(df, examplePostCode, founddf['Eastings'], founddf['Northings'], dimension, plotter)
+
+    #e = founddf['Eastings']
+    #n = founddf['Northings']
+    #dimension_m = dimension * 1000       # m
+    #bl = (int(e-dimension_m/2), int(n-dimension_m/2))
+    #tr = (int(e+dimension_m/2), int(n+dimension_m/2))
+    #print(f'bl = {bl} : tr = {tr}')
+
+    #if plotter == 'CV2' :
+    #    cv2plotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+    #elif plotter == 'Tk' :
+    #    tkplotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+
+def showPostcode(df, postCode, plotter='CV2', savefilelocation=None) :
+    founddf = df [df['Postcode'] == postCode]
+    if founddf.empty :
+        print(f'*** Postcode not found : {postCode}')
+        return
+
+    showAround(df, postCode, founddf['Eastings'], founddf['Northings'], 10, plotter)
+
+def showAround(df, title, e, n, dimension_km, plotter) :
+    dimension_m = dimension_km * 1000       # m
     bl = (int(e-dimension_m/2), int(n-dimension_m/2))
     tr = (int(e+dimension_m/2), int(n+dimension_m/2))
     print(f'bl = {bl} : tr = {tr}')
 
     if plotter == 'CV2' :
-        cv2plotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+        cv2plotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
     elif plotter == 'Tk' :
-        tkplotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
-
+        tkplotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
 
 # Code point Open User Guide explains the Quality values as follows:
 # https://www.ordnancesurvey.co.uk/documents/product-support/user-guide/code-point-open-user-guide.pdf
@@ -640,7 +662,7 @@ def regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile) :
     else :
         return dfEmpty
 
-    displayBasicInfo(df)
+    #displayBasicInfo(df)
 
     # Add further columns showing looked-up values of the various code columns, checking referential
     # itegrity and null-ness at the same time.
@@ -1049,10 +1071,91 @@ def showAllGB(df, plotter='CV2', savefilelocation=None) :
 
 OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
 tmpDir = os.path.dirname(OSZipFile) + '/tmp'
+postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
 
-def main(args) :
 
-    postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
+def main() :
+
+    import argparse
+    # https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args
+    parser = argparse.ArgumentParser(description='OS Code-Point Postcode data processing program')
+    subparsers = parser.add_subparsers(help='sub-command help')
+
+    parser_generatedf = subparsers.add_parser('generate', help='read OS data files to generate a cached dataframe for use with other commands')
+    parser_generatedf.set_defaults(cmd='generate')
+
+    parser_generatedf = subparsers.add_parser('df_info', help='Show info about the Pandas dataframe structure')
+    parser_generatedf.set_defaults(cmd='df_info')
+
+    parser_generatedf = subparsers.add_parser('stats', help='Produce stats and aggregates relating to the postcodes dataset')
+    parser_generatedf.set_defaults(cmd='stats')
+
+    parser_generatedf = subparsers.add_parser('to_csv', help='Produce a csv file containing the postcodes dataset')
+    parser_generatedf.set_defaults(cmd='to_csv')
+    # ???? Need an output location/filename. Default to tmp
+
+    parser_pc_info = subparsers.add_parser('info', help='Display info about a specified postcode')
+    parser_pc_info.add_argument('postcode', help='the postcode of interest, in quotes if it contains any spaces')
+    parser_pc_info.set_defaults(cmd='info')
+
+    parser_pc_plot = subparsers.add_parser('plot', help='Plot a map around the specified postcode')
+    parser_pc_plot.add_argument('basis', choices=['postcode', 'gridsquare', 'name'], help='The the postcode of interest, in quotes if it contains any spaces')
+    parser_pc_plot.add_argument('area', help='identifies the area of interest, in quotes if it contains any spaces')
+    parser_pc_plot.set_defaults(cmd='plot')
+
+    parsed_args = parser.parse_args()
+    print(type(parsed_args))
+    print(parsed_args)
+    d = vars(parsed_args)
+    print(d)
+
+    if not 'cmd' in d:
+        # Can argparse not detect this ? Need a group ?
+        # And need to list all available.
+        print('No top level command')
+    elif parsed_args.cmd == 'generate' :
+        print('generate .. command')
+    else :
+        # Need to retrieve cached data
+        df = readCachedDataFrameFromFile(tmpDir)
+        if df.empty :
+            print()
+            print('*** No dataframe produced from cache')
+            return
+
+        plotwith = 'CV2'
+        outputFileLocation = './pngs'
+
+        if parsed_args.cmd == 'info' :
+            print(f'info .. command for {parsed_args.postcode}')
+            displayExample(df, example=parsed_args.postcode, plotter=plotwith, dimension=10)
+        elif parsed_args.cmd == 'plot' :
+            print(f'plot .. command for {parsed_args.basis} {parsed_args.area}')
+            if parsed_args.basis == 'postcode' :
+                showPostcode(df, parsed_args.area, plotter=plotwith, savefilelocation=outputFileLocation)
+            if parsed_args.basis == 'gridsquare' :
+                showGridSquare(df, parsed_args.area, plotter=plotwith, savefilelocation=outputFileLocation)
+            elif parsed_args.basis == 'name' :
+                if parsed_args.area == 'all' :
+                    showAllGB(df, plotter=plotwith, savefilelocation=outputFileLocation)
+                else :
+                    # How best to handle this
+                    print()
+                    print(f'*** unrecognised area {parsed_args.area} to plot')
+                    return
+            # ???? Handle arbitrary areas ?
+        elif parsed_args.cmd == 'stats' :
+            # Could have a geog component.
+            print('Run stats command ...')
+        elif parsed_args.cmd == 'to_csv' :
+            print('Run to_csv command ...')
+        elif parsed_args.cmd == 'df_info' :
+            print('Run df_info command ...')
+            displayBasicInfo(df)
+        else :
+            print(f'Unrecognised command: {parsed_args.cmd}')
+
+    if 1==1 : return
 
     # Decide whether to generate a new dataframe or read a cached one from file. Any sort of command line argument
     # means generate from scratch.
@@ -1087,5 +1190,5 @@ def main(args) :
     showAllGB(df, plotter=plotwith, savefilelocation=outputFileLocation)
 
 if __name__ == '__main__' :
-    main(sys.argv)
+    main()
 

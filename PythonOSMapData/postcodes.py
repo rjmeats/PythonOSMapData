@@ -140,6 +140,20 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
 
     return combined_df
 
+def saveAsCSV(df, tmpDir) :
+    outputDir = tmpDir + '/' + 'output'
+    outFile = outputDir + '/' + 'postcodes.out.csv'
+
+    print(f'Saving dataframe to CSV file {outFile} ..')
+    if not os.path.isdir(outputDir) :
+        os.makedirs(outputDir)
+        print(f'.. created output location {outputDir} ..')
+
+    df.to_csv(outFile, index=False)
+    print(f'.. saved dataframe to CSV file {outFile}')
+
+
+
 #############################################################################################
 
 def displayBasicInfo(df) :
@@ -465,6 +479,8 @@ def displayExample(df, example=None, plotter='CV2', dimension=25) :
     # Print out details of an example postcode (Trent Bridge).
     examplePostCode = 'NG2 6AG' if example == None else example
 
+    formattedPostCode = normalisePostCodeFormat(examplePostCode)
+
     print()
     print('###############################################################')
     print()
@@ -472,9 +488,9 @@ def displayExample(df, example=None, plotter='CV2', dimension=25) :
     print()
     format="Vertical"
 
-    founddf = df [df['Postcode'] == examplePostCode]
+    founddf = df [df['Postcode'] == formattedPostCode]
     if founddf.empty :
-        print(f'*** Postcode not found : {examplePostCode}')
+        print(f'*** Postcode not found : {formattedPostCode}')
         return
 
     if format == "Vertical" :
@@ -496,29 +512,45 @@ def displayExample(df, example=None, plotter='CV2', dimension=25) :
     print()
     print('###############################################################')
 
-    showPostcode(df, examplePostCode, plotter='CV2', savefilelocation=None)
+    showPostcode(df, formattedPostCode, plotter='CV2', savefilelocation=None)
 
-    #showAround(df, examplePostCode, founddf['Eastings'], founddf['Northings'], dimension, plotter)
+def normalisePostCodeFormat(postCode) :
+    pc = postCode.upper().strip().replace(' ', '')
 
-    #e = founddf['Eastings']
-    #n = founddf['Northings']
-    #dimension_m = dimension * 1000       # m
-    #bl = (int(e-dimension_m/2), int(n-dimension_m/2))
-    #tr = (int(e+dimension_m/2), int(n+dimension_m/2))
-    #print(f'bl = {bl} : tr = {tr}')
+    # Formats which we can use:
+    # 'X9##9XX',
+    # 'X99#9XX',
+    # 'X9X#9XX',
+    # 'XX9#9XX',
+    # 'XX999XX',
+    # 'XX9X9XX'
+    # all 7 chars long
+    # If more than 7, leave - must be wrong
+    # If 6 chars long, put in a space in the middle
+    # If 5 chars long, put in two spaces in the middle
+    # If less than 5, leave - must be wrong
+    # Don't bother checking letter/number aspects - just trying to smooth out spacing/case issues here.
 
-    #if plotter == 'CV2' :
-    #    cv2plotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
-    #elif plotter == 'Tk' :
-    #    tkplotSpecific(df, title=examplePostCode, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+    if len(pc) == 6 :
+        pc = pc[0:3] + ' ' + pc[3:]
+        print(f'6 : Modified {postCode} to {pc}')
+    elif len(pc) == 5 :
+        pc = pc[0:2] + '  ' + pc[2:]
+        print(f'5 : Modified {postCode} to {pc}')
+
+    return pc
 
 def showPostcode(df, postCode, plotter='CV2', savefilelocation=None) :
-    founddf = df [df['Postcode'] == postCode]
-    if founddf.empty :
-        print(f'*** Postcode not found : {postCode}')
-        return
 
-    showAround(df, postCode, founddf['Eastings'], founddf['Northings'], 10, plotter)
+    formattedPostCode = normalisePostCodeFormat(postCode)
+
+    founddf = df [df['Postcode'] == formattedPostCode]
+    if founddf.empty :
+        print(f'*** Postcode not found in dataframe : {postCode}')
+        return 1
+    else :
+        showAround(df, postCode, founddf['Eastings'], founddf['Northings'], 1, plotter)
+        return 0
 
 def showAround(df, title, e, n, dimension_km, plotter) :
     dimension_m = dimension_km * 1000       # m
@@ -927,6 +959,10 @@ def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000
                 imgLookupIndex[ns+i, es+j] = index
 
     cvtitle = 'Title' if title == None else title
+    v_km = (top_r[0] - bottom_l[0]) // 1000
+    h_km = (top_r[1] - bottom_l[1]) // 1000
+    dimensions = f'{v_km} km x {h_km} km'
+    cvtitle = f'{cvtitle} : {dimensions}'
     # For CV2 we need to reverse the colour ordering of the array to BGR
     cv2.imshow(cvtitle, convertToBGR(img))
     cv2.setMouseCallback(cvtitle, CV2ClickEvent)
@@ -1037,9 +1073,12 @@ def addPostCodeBreakdown(df) :
 
 import nationalgrid as ng
 def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
-    sq = ng.dictGridSquares[sqName]        
+    sq = ng.dictGridSquares[sqName.upper()]        
     print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
     print(f'{sq.getPrintGridString()}')
+    
+    if not sq.isRealSquare :
+        print(f'Square {sq.name} is all sea ..')
     
     bl = (sq.eastingIndex * 100 * 1000, sq.northingIndex * 100 * 1000)
     tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
@@ -1052,7 +1091,7 @@ def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
             writeImageArrayToFileUsingCV2(filename, img)
     else :
         tkplotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
-
+    
 def writeImageArrayToFileUsingCV2(filename, img) :
     from cv2 import cv2
     if cv2.imwrite(filename, convertToBGR(img)) :
@@ -1073,55 +1112,74 @@ OSZipFile = r"./OSData/PostCodes/codepo_gb.zip"
 tmpDir = os.path.dirname(OSZipFile) + '/tmp'
 postcodeAreasFile = r"./OSData/PostCodes/postcode_district_area_lists.xls"
 
+import argparse
+
+def addStandardArgumentOptions(subparser, forCacheWrite=False) :
+    subparser.add_argument('-v', '--verbose', action='store_true', help='Show some diagnostics')
+    subparser.add_argument('-t', '--tempdir', 
+                        help='Set the temporary directory location (used for unzipping data and as the default cache location)')
+
+    fileMode = 'w' if forCacheWrite else 'r'
+    subparser.add_argument('-c', '--cachefile', type=argparse.FileType(fileMode), help='Specify the location for the dataframe cache file')
 
 def main() :
 
-    import argparse
     # https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args
     parser = argparse.ArgumentParser(description='OS Code-Point Postcode data processing program')
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    parser_generatedf = subparsers.add_parser('generate', help='read OS data files to generate a cached dataframe for use with other commands')
-    parser_generatedf.set_defaults(cmd='generate')
+    subparser = subparsers.add_parser('generate', help='read OS data files to generate a cached dataframe for use with other commands')
+    subparser.set_defaults(cmd='generate')
+    addStandardArgumentOptions(subparser, forCacheWrite=True)
 
-    parser_generatedf = subparsers.add_parser('df_info', help='Show info about the Pandas dataframe structure')
-    parser_generatedf.set_defaults(cmd='df_info')
+    subparser = subparsers.add_parser('df_info', help='Show info about the Pandas dataframe structure')
+    subparser.set_defaults(cmd='df_info')
+    addStandardArgumentOptions(subparser)
 
-    parser_generatedf = subparsers.add_parser('stats', help='Produce stats and aggregates relating to the postcodes dataset')
-    parser_generatedf.set_defaults(cmd='stats')
+    subparser = subparsers.add_parser('stats', help='Produce stats and aggregates relating to the postcodes dataset')
+    subparser.set_defaults(cmd='stats')
+    addStandardArgumentOptions(subparser)
 
-    parser_generatedf = subparsers.add_parser('to_csv', help='Produce a csv file containing the postcodes dataset')
-    parser_generatedf.set_defaults(cmd='to_csv')
-    # ???? Need an output location/filename. Default to tmp
+    subparser = subparsers.add_parser('to_csv', help='Produce a csv file containing the postcodes dataset')
+    subparser.set_defaults(cmd='to_csv')
+    subparser.add_argument('-o', '--outfile', type=argparse.FileType('w'), help='Specify the location for the output CSV file)')
+    addStandardArgumentOptions(subparser)
+    
+    subparser = subparsers.add_parser('info', help='Display info about a specified postcode')
+    subparser.add_argument('postcode', help='the postcode of interest, in quotes if it contains any spaces')
+    subparser.set_defaults(cmd='info')
+    addStandardArgumentOptions(subparser)
 
-    parser_pc_info = subparsers.add_parser('info', help='Display info about a specified postcode')
-    parser_pc_info.add_argument('postcode', help='the postcode of interest, in quotes if it contains any spaces')
-    parser_pc_info.set_defaults(cmd='info')
-
-    parser_pc_plot = subparsers.add_parser('plot', help='Plot a map around the specified postcode')
-    parser_pc_plot.add_argument('basis', choices=['postcode', 'gridsquare', 'name'], help='The the postcode of interest, in quotes if it contains any spaces')
-    parser_pc_plot.add_argument('area', help='identifies the area of interest, in quotes if it contains any spaces')
-    parser_pc_plot.set_defaults(cmd='plot')
+    subparser = subparsers.add_parser('plot', help='Plot a map around the specified postcode')
+    addStandardArgumentOptions(subparser)
+    subparser.add_argument('-p', '--plotter', choices=['CV2', 'TK'], default='CV2', help='Plot using CV2 (OpenCV) or TK')
+    subparser.add_argument('place', help='Identifies the area to be plotted, in quotes if it contains any spaces')
+    subparser.set_defaults(cmd='plot')
 
     parsed_args = parser.parse_args()
-    print(type(parsed_args))
-    print(parsed_args)
+    #print(type(parsed_args))
+    #print(parsed_args)
     d = vars(parsed_args)
     print(d)
 
     if not 'cmd' in d:
-        # Can argparse not detect this ? Need a group ?
-        # And need to list all available.
-        print('No top level command')
+        parser.print_help()
+        return 1
     elif parsed_args.cmd == 'generate' :
         print('generate .. command')
+        # Handle verbose, alternative tmp/cache file location options
+        df = regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile)
+        if not df.empty :
+            writeCachedDataFrame(tmpDir, df)
+        else :
+            return 1
     else :
         # Need to retrieve cached data
         df = readCachedDataFrameFromFile(tmpDir)
         if df.empty :
             print()
-            print('*** No dataframe produced from cache')
-            return
+            print('*** No dataframe read from cache')
+            return 1
 
         plotwith = 'CV2'
         outputFileLocation = './pngs'
@@ -1129,66 +1187,43 @@ def main() :
         if parsed_args.cmd == 'info' :
             print(f'info .. command for {parsed_args.postcode}')
             displayExample(df, example=parsed_args.postcode, plotter=plotwith, dimension=10)
-        elif parsed_args.cmd == 'plot' :
-            print(f'plot .. command for {parsed_args.basis} {parsed_args.area}')
-            if parsed_args.basis == 'postcode' :
-                showPostcode(df, parsed_args.area, plotter=plotwith, savefilelocation=outputFileLocation)
-            if parsed_args.basis == 'gridsquare' :
-                showGridSquare(df, parsed_args.area, plotter=plotwith, savefilelocation=outputFileLocation)
-            elif parsed_args.basis == 'name' :
-                if parsed_args.area == 'all' :
-                    showAllGB(df, plotter=plotwith, savefilelocation=outputFileLocation)
-                else :
-                    # How best to handle this
-                    print()
-                    print(f'*** unrecognised area {parsed_args.area} to plot')
-                    return
-            # ???? Handle arbitrary areas ?
-        elif parsed_args.cmd == 'stats' :
-            # Could have a geog component.
-            print('Run stats command ...')
-        elif parsed_args.cmd == 'to_csv' :
-            print('Run to_csv command ...')
         elif parsed_args.cmd == 'df_info' :
             print('Run df_info command ...')
             displayBasicInfo(df)
+        elif parsed_args.cmd == 'stats' :
+            # Could have a geog component.
+            print('Run stats command ...')
+            aggregate(df)
+        elif parsed_args.cmd == 'to_csv' :
+            print('Run to_csv command ...')
+            saveAsCSV(df, tmpDir)
+        elif parsed_args.cmd == 'plot' :
+            print(f'Run plot command for "{parsed_args.place}" ..')
+            # Work out if the place is a postcode, a grid square, <others?> or 'all'
+            # Allow for spaces, and case. Further options:
+            # county, post area, post district, district/ward/borough etc, ONS unit code ?
+            # Or just a rectangle identified using NG top-left, bottom right/dimensions.
+            # Can these overlap ? E.g. Post area = NG square (populated). Certainly town names can clash.
+            # Plotter control, dimensions control, control of whether or not to save as png and where
+            
+            if parsed_args.place == 'all' :
+                showAllGB(df, plotter=plotwith, savefilelocation=outputFileLocation)
+            elif ng.checkGridSquareName(parsed_args.place) :
+                showGridSquare(df, parsed_args.place, plotter=plotwith, savefilelocation=outputFileLocation)
+            else :
+                status = showPostcode(df, parsed_args.place, plotter=plotwith, savefilelocation=outputFileLocation)
+            #else :
+            #    # How best to handle this
+            #    #print()
+            #    #print(f'*** unrecognised place {parsed_args.area} to plot')
+            #    return
+            # ???? Handle arbitrary areas ?
         else :
             print(f'Unrecognised command: {parsed_args.cmd}')
+            return 1
 
-    if 1==1 : return
-
-    # Decide whether to generate a new dataframe or read a cached one from file. Any sort of command line argument
-    # means generate from scratch.
-    readFromFile = False
-    if len(args) > 1 :
-        readFromFile = False
-    else :
-        readFromFile = True
-
-    if readFromFile :
-        df = readCachedDataFrameFromFile(tmpDir)
-    else :
-        df = regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile)
-        if not df.empty :
-            writeCachedDataFrame(tmpDir, df)
-
-    if df.empty :
-        print()
-        print('*** No dataframe produced')
-        return
-
-    print()
-    print(df)
-
-    #aggregate(df)
-    print()
-
-    outputFileLocation = './pngs'
-    plotwith = 'CV2'
-    displayExample(df, plotter=plotwith, dimension=10)
-    showGridSquare(df, 'TQ', plotter=plotwith, savefilelocation=outputFileLocation)
-    showAllGB(df, plotter=plotwith, savefilelocation=outputFileLocation)
+    return 0    # Not always
 
 if __name__ == '__main__' :
-    main()
-
+    status = main()
+    sys.exit(status)

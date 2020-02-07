@@ -12,7 +12,7 @@ import nationalgrid as ng
 
 #############################################################################################
 
-def saveDataframeAsCSV(df, outDir, postcodeArea='all') :
+def saveDataframeAsCSV(df, outDir, postcodeArea='all', verbose=False) :
 
     if postcodeArea == None :
         postcodeArea = 'all'
@@ -40,9 +40,11 @@ def saveDataframeAsCSV(df, outDir, postcodeArea='all') :
         dfToSave.to_csv(outFile, index=False)
         print(f'.. saved dataframe to CSV file {outFile}')
 
+    return 0
+
 #############################################################################################
 
-def displayBasicInfo(df) :
+def displayBasicDataFrameInfo(df, verbose=False) :
     """ See what the basic pandas info calls show about the dataframe. """
 
     print()
@@ -89,10 +91,11 @@ def displayBasicInfo(df) :
     print()
     print('###################################################')
 
+    return 0
 
 #############################################################################################
 
-def aggregate(df) :
+def produceStats(df, verbose=False) :
 
     print(f'############### Grouping by PostcodeArea, all columns ###############')
     print()
@@ -127,26 +130,25 @@ def aggregate(df) :
     print()
     print(dfAreaCounts)
 
+    return 0
+    
 #############################################################################################
 
 
-def displayExample(df, example=None, plotter='CV2', dimension=25) :
-    # Print out details of an example postcode (Trent Bridge).
-    examplePostCode = 'NG2 6AG' if example == None else example
-
-    formattedPostCode = normalisePostCodeFormat(examplePostCode)
+def displayPostcodeInfo(df, postcode='NG2 6AG', plotter='CV2', dimension=25, verbose=False) :
+    formattedPostcode = normalisePostCodeFormat(postcode)
 
     print()
     print('###############################################################')
     print()
-    print(f'Values for example postcode {examplePostCode}')
+    print(f'Data for postcode {postcode}')
     print()
     format="Vertical"
 
-    founddf = df [df['Postcode'] == formattedPostCode]
+    founddf = df [df['Postcode'] == formattedPostcode]
     if founddf.empty :
-        print(f'*** Postcode not found : {formattedPostCode}')
-        return
+        print(f'*** Postcode not found : {formattedPostcode}')
+        return 1
 
     if format == "Vertical" :
         # Print vertically, so all columns are listed
@@ -167,7 +169,9 @@ def displayExample(df, example=None, plotter='CV2', dimension=25) :
     print()
     print('###############################################################')
 
-    showPostcode(df, formattedPostCode, plotter, savefilelocation=None)
+    showPostcode(df, formattedPostcode, plotter, savefilelocation=None)
+
+    return 0
 
 def normalisePostCodeFormat(postCode) :
     pc = postCode.upper().strip().replace(' ', '')
@@ -300,25 +304,22 @@ def writeCachedDataFrame(df, tmpDir=defaultTmpDir, cacheFile=None, verbose=False
 
 ######################################################################################
 
-def addStandardArgumentOptions(subparser) :
-    subparser.add_argument('-v', '--verbose', action='store_true', help='Show detailed diagnostics')
-    subparser.add_argument('-t', '--tempdir', default=defaultTmpDir, 
-                        help='Set the temporary directory location (used for unzipping data and as the default cache location)')
+# Section covering command-line argument handling and the 'main' program.
 
-    subparser.add_argument('-c', '--cachefile', help='Specify the location for the dataframe cache file')
+def defineAllowedArguments() :
+    '''Tell argparse about the allowed commands and options. Returns a parser object.'''
 
-def addPlotterArgumentOption(subparser) :
-    subparser.add_argument('-p', '--plotter', choices=['CV2', 'TK'], default='CV2', help='Plot using CV2 (OpenCV) or TK')
+    # The program provides several different sub-commands, each with its own command line options:
+    # - the 'generate' command reads the source data files and generates a dataframe, which is then cached.
+    # - the other commands (e.g. 'info') load the cached dataframe (much quicker than generating it from source)
+    #   and then read it to produce some sort of output.
 
-def main() :
-
-    # https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args
     parser = argparse.ArgumentParser(description='OS Code-Point Postcode data processing program')
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    subparser = subparsers.add_parser('generate', help='read OS data files to generate a cached dataframe for use with other commands')
+    subparser = subparsers.add_parser('generate', help='Read OS data files to generate a cached dataframe for use with other commands')
     subparser.set_defaults(cmd='generate')
-    subparser.add_argument('-d', '--datadir', default=defaultDataDir, help='Directory location of the source data files to be loaded')
+    subparser.add_argument('-d', '--datadir', default=defaultDataDir, help='Directory location of the source data files to be read')
     addStandardArgumentOptions(subparser)
 
     subparser = subparsers.add_parser('df_info', help='Show info about the Pandas dataframe structure')
@@ -349,57 +350,77 @@ def main() :
     subparser.add_argument('place', help='Identifies the area to be plotted, in quotes if it contains any spaces')
     subparser.set_defaults(cmd='plot')
 
-    parsed_args = parser.parse_args()
-    dictArgs = vars(parsed_args)
+    return parser
 
-    # Check that a command option has been provided.
-    if not 'cmd' in dictArgs:
-        parser.print_help()
-        return 1
+def addStandardArgumentOptions(subparser) :
+    '''Define command line options which can apply to any/all commands.'''
 
-    # Make more use of this - not passed in to many functions yet. ????
-    verbose = parsed_args.verbose
+    # NB All these arguments are optional.
+    subparser.add_argument('-v', '--verbose', action='store_true', help='Show detailed diagnostics')
+    subparser.add_argument('-t', '--tmpdir', default=defaultTmpDir, 
+                        help='Override the default temporary directory location (used for unzipping data and as the default cache location)')
+    subparser.add_argument('-c', '--cachefile', help='Override the default location for the dataframe cache file.')
+
+def addPlotterArgumentOption(subparser) :
+    '''Define a command line option to indicate which graphics plotter to use for map plots.'''
+    subparser.add_argument('-p', '--plotter', choices=['CV2', 'TK'], default='CV2', help='Plot using CV2 (OpenCV) or TK')
+
+def processCommand(parsedArgs) :
+    '''Use the arguments returned by argparse to work out which sub-command to perform, and perform it.
+    Returns 0 if the sub-command was successful, 1 if not.'''
+
+    # The 'verbose' argument can apply to any of the sub-commands.
+    verbose = parsedArgs.verbose
     if verbose :
         print()
-        print(f'Dictionary of command line arguments:')
-        print(dictArgs)
+        print(f'Command line arguments extracted by argparse:')
+        print(parsedArgs)
 
-    tmpDir = parsed_args.tempdir
+    # The 'tmpDir' argument apply to several sub-commands, so do some common checks here.
+    tmpDir = parsedArgs.tmpdir
     if not os.path.isdir(tmpDir) :
+        print()
         print(f'*** Temporary directory {tmpDir} does not exist.')
         return 1
 
     if verbose :
         print()
-        print(f'Running {parsed_args.cmd} command ..')
+        print(f'Running {parsedArgs.cmd} command ..')
 
-    if parsed_args.cmd == 'generate' :
-        # Handle verbose, alternative file location options
-        df = pcgen.regenerateDataFrame(parsed_args.datadir, tmpDir, verbose=verbose)
-        if not df.empty :
-            writeCachedDataFrame(df, tmpDir, parsed_args.cachefile, verbose=verbose)
-        else :
-            return 1
-    else :
-        # Need to retrieve cached data
-        df = readCachedDataFrame(tmpDir, parsed_args.cachefile, verbose)
+    # There are two types of sub-command:
+    # - 'generate' which reads source data files and creates a Pandas dataframe for use by other sub-commands.
+    #   The dataframe is written to a cache file.
+    # - all the other sub-commands operate on a dataframe produced by reading in the cached dataframe from file.
+    if parsedArgs.cmd == 'generate' :
+        # Generate and then cache the dataframe
+        df = pcgen.generateDataFrameFromSourceData(parsedArgs.datadir, tmpDir, verbose)
         if df.empty :
             print()
-            print('*** No dataframe read from cache')
+            print('*** No dataframe generated from source data.')
             return 1
-        
-        if parsed_args.cmd == 'info' :
-            print(f'info .. command for {parsed_args.postcode}')
-            displayExample(df, example=parsed_args.postcode, plotter=parsed_args.plotter, dimension=10)
-        elif parsed_args.cmd == 'df_info' :
-            displayBasicInfo(df)
-        elif parsed_args.cmd == 'stats' :
-            # Could have a geog component ????
-            aggregate(df)
-        elif parsed_args.cmd == 'to_csv' :
-            saveDataframeAsCSV(df, parsed_args.outdir, parsed_args.area)
-        elif parsed_args.cmd == 'plot' :
-            print(f'Run plot command for "{parsed_args.place}" ..')
+        else :
+            writeCachedDataFrame(df, tmpDir, parsedArgs.cachefile, verbose)
+    else :
+        # Retrieve the cached dataframe into memory, and then apply the relevant command to it.
+        df = readCachedDataFrame(tmpDir, parsedArgs.cachefile, verbose)
+        if df.empty :
+            print()
+            print('*** No dataframe read from cache.')
+            return 1
+
+        status = 0
+        # Process the relevant sub-command using the dataframe read from cache.        
+        if parsedArgs.cmd == 'info' :
+            status = displayPostcodeInfo(df, postcode=parsedArgs.postcode, plotter=parsedArgs.plotter, dimension=10, verbose=verbose)
+        elif parsedArgs.cmd == 'df_info' :
+            status = displayBasicDataFrameInfo(df, verbose)
+        elif parsedArgs.cmd == 'stats' :
+            status = produceStats(df, verbose)
+        elif parsedArgs.cmd == 'to_csv' :
+            # Option to save all postcode data to CSV, or just for a specified postcode area.
+            status = saveDataframeAsCSV(df, parsedArgs.outdir, parsedArgs.area, verbose)
+        elif parsedArgs.cmd == 'plot' :
+            print(f'Run plot command for "{parsedArgs.place}" ..')
             # Work out if the place is a postcode, a grid square, <others?> or 'all'
             # Allow for spaces, and case. Further options:
             # county, post area, post district, district/ward/borough etc, ONS unit code ?
@@ -407,26 +428,47 @@ def main() :
             # Can these overlap ? E.g. Post area = NG square (populated). Certainly town names can clash.
             # Plotter control, dimensions control, control of whether or not to save as png and where
             
-            imageOutDir = parsed_args.outdir
+            imageOutDir = parsedArgs.outdir
             if imageOutDir.lower() == 'none' :
                 imageOutDir = None
-            if parsed_args.place == 'all' :
-                showAllGB(df, plotter=parsed_args.plotter, savefilelocation=imageOutDir)
-            elif ng.checkGridSquareName(parsed_args.place) :
-                showGridSquare(df, parsed_args.place, plotter=parsed_args.plotter, savefilelocation=imageOutDir)
+            if parsedArgs.place == 'all' :
+                showAllGB(df, plotter=parsedArgs.plotter, savefilelocation=imageOutDir)
+            elif ng.checkGridSquareName(parsedArgs.place) :
+                showGridSquare(df, parsedArgs.place, plotter=parsedArgs.plotter, savefilelocation=imageOutDir)
             else :
-                status = showPostcode(df, parsed_args.place, plotter=parsed_args.plotter, savefilelocation=imageOutDir)
+                status = showPostcode(df, parsedArgs.place, plotter=parsedArgs.plotter, savefilelocation=imageOutDir)
             #else :
             #    # How best to handle this
             #    #print()
-            #    #print(f'*** unrecognised place {parsed_args.area} to plot')
+            #    #print(f'*** unrecognised place {parsedArgs.area} to plot')
             #    return
             # ???? Handle arbitrary areas ?
         else :
-            print(f'Unrecognised command: {parsed_args.cmd}')
+            print(f'Unrecognised command: {parsedArgs.cmd}')
             return 1
 
-    return 0    # Not always - set status
+def main() :
+    '''Main program processing: read command line arguments, and invoke functions to process the specified commands.
+    Returns 0 if command was successful, 1 if not.'''
+    # Use the Python argparse command-line options parser to 
+    # https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args
+
+    # Set up the command line parser, and then invoke it against the command line provided (sys.argv). 
+    parser = defineAllowedArguments()
+    parsedArgs = parser.parse_args()
+
+    # Check that there was a sub-command on the command line - argparse doesn't seem to have a way to do this
+    # itself for a diverse set of sub-commands, so we have to query the parsedArgs object it returns.
+    status = 0
+    if not hasattr(parsedArgs, 'cmd') :
+        print('No sub-command provded.')
+        parser.print_usage()
+        status = 1
+    else :
+        # Look in detail at the parsed arguments, and perform the relevant operation.
+        status = processCommand(parsedArgs)
+
+    return status
 
 ######################################################################################
 

@@ -528,12 +528,12 @@ def examineLocationColumns(df, verbose=False) :
     print()
     print(df[ df['Quality'] == 90][0:10])
 
-def regenerateDataFrame(dataDir, tmpDir, verbose=False) :
+def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
 
     OSZipFile = dataDir + "/" + "codepo_gb.zip"
     postcodeAreasFile = dataDir + "/" + "postcode_district_area_lists.xls"
 
-    print('Regenerating postcode DataFrame from source data files ..')
+    print('Generating postcode DataFrame from source data files ..')
 
     dfEmpty = pd.DataFrame()
 
@@ -613,7 +613,7 @@ def regenerateDataFrame(dataDir, tmpDir, verbose=False) :
     examineLocationColumns(dfDenormalised, verbose=verbose)
 
     print()
-    print('Postcode DataFrame regeneration from source data files finished.')
+    print('Postcode DataFrame generation from source data files finished.')
 
     return dfDenormalised
 

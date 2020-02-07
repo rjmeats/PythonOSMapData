@@ -4,13 +4,15 @@ import sys
 import zipfile
 import pandas as pd
 import pickle
+import argparse
 
 import postcodesgeneratedf as pcgen
 import postcodesplot as pcplot
+import nationalgrid as ng
 
 #############################################################################################
 
-def saveAsCSV(df, outDir, postcodeArea='all') :
+def saveDataframeAsCSV(df, outDir, postcodeArea='all') :
 
     if postcodeArea == None :
         postcodeArea = 'all'
@@ -45,11 +47,11 @@ def displayBasicInfo(df) :
 
     print()
     print('###################################################')
+    print('################## type and shape #################')
     print()
-    print(f'type(df) : {type(df)}') 
-    print(f'df.shape : {df.shape}')
+    print(f'type(df) = {type(df)} : df.shape : {df.shape}') 
     print()
-    print('################## df ##################')
+    print('################## print(df) #####################')
     print()
     print(df)
     print()
@@ -215,7 +217,6 @@ def showAround(df, title, e, n, dimension_km, plotter) :
 
     # Save file option ?
 
-import nationalgrid as ng
 def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
     sq = ng.dictGridSquares[sqName.upper()]        
     print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
@@ -242,50 +243,62 @@ def showAllGB(df, plotter='CV2', savefilelocation=None) :
     else :
         pcplot.tkplotSpecific(df, title='All GB', canvas_h=800, density=10)
 
-def getCacheFilePath(tmpDir) :
+######################################################################################
+
+# Default locations for various files - can be overridden from the command line options.
+defaultDataDir = "./OSData/PostCodes"       # Where the source data files are
+defaultTmpDir = defaultDataDir + '/tmp'     # Working area, for unzipping and caching
+defaultOutDir = "./out"                     # Output file location.
+defaultImageOutDir = "./pngs"               # Output file location for image files.
+
+######################################################################################
+
+# Generating the dataframe from source data files takes a few minutes, so cache the dataframe
+# in a file in the tmp directory, and read it in again for read-only commands which run against
+# the dataframe.
+
+def getCacheFilePath(tmpDir=defaultTmpDir) :
+    '''Where is the cached dataframe file located ?'''
     return tmpDir + '/cached/df.cache'
 
-def readCachedDataFrameFromFile(tmpDir, cacheFile=None) :
-
+def readCachedDataFrame(tmpDir=defaultTmpDir, cacheFile=None, verbose=False) :
+    '''Read the cached dataframe pickle file back into a dataframe.
+       The default file location can be overridden by the caller.
+       Returns an empty dataframe if the file cannot be found.
+    '''
     if cacheFile == None :
         cacheFile = getCacheFilePath(tmpDir)
-    print()
-    print(f'Reading dataframe from cache file {cacheFile} ..')
     if os.path.isfile(cacheFile) :
-        print(f'.. cache file {cacheFile} found ..')
-
         with open(cacheFile, 'rb') as f:
-            response = pickle.load(f)
-            print(f'.. read pre-existing response from cache file')
+            print(f'Reading pre-existing dataframe from cache file {cacheFile} .. ', flush=True, end='')
+            df = pickle.load(f)
+            print(f'done.')
     else :
         print(f'*** No cache file {cacheFile} found.')
-        response = pd.DataFrame()
+        df = pd.DataFrame()
 
-    return response
+    return df
 
-def writeCachedDataFrame(df, tmpDir, cacheFile=None) :
+def writeCachedDataFrame(df, tmpDir=defaultTmpDir, cacheFile=None, verbose=False) :
+    '''Write the dataframe out to a cache as a pickle file.
+       The default file location can be overridden by the caller.
+    '''
     if cacheFile == None :
         cacheFile = getCacheFilePath(tmpDir)
-    print()
-    print(f'Writing dataframe to cache file {cacheFile} ..')
-    
+
+    # Create the directory paths needed, if any.
     cacheFileDir = os.path.dirname(cacheFile)
+    print()
     if not os.path.isdir(cacheFileDir) :
         os.makedirs(cacheFileDir)
-        print(f'.. created cache location {cacheFileDir}')
+        print(f'Created cache file location {cacheFileDir}.')
 
-    # Use pickle to cache the response data.
     with open(cacheFile, 'wb') as f:
+        print(f'Writing dataframe to cache file {cacheFile} .. ', flush=True, end='')    
         pickle.dump(df, f)
-        print(f'.. written dataframe as binary object to cache file {cacheFile}')
+        print(f'done.')
 
-import argparse
-
-# Default location for source data files read and for a tmp working area (for unzipped data and cached data).
-defaultDataDir = "./OSData/PostCodes"
-defaultTmpDir = defaultDataDir + '/tmp'
-defaultOutDir = "./out"
-defaultImageOutDir = "./pngs"
+######################################################################################
 
 def addStandardArgumentOptions(subparser) :
     subparser.add_argument('-v', '--verbose', action='store_true', help='Show detailed diagnostics')
@@ -337,37 +350,39 @@ def main() :
     subparser.set_defaults(cmd='plot')
 
     parsed_args = parser.parse_args()
-    #print(type(parsed_args))
-    #print(parsed_args)
-    d = vars(parsed_args)
-    print(d)
+    dictArgs = vars(parsed_args)
 
     # Check that a command option has been provided.
-    if not 'cmd' in d:
+    if not 'cmd' in dictArgs:
         parser.print_help()
         return 1
 
-    tmpDir = parsed_args.tempdir
+    # Make more use of this - not passed in to many functions yet. ????
+    verbose = parsed_args.verbose
+    if verbose :
+        print()
+        print(f'Dictionary of command line arguments:')
+        print(dictArgs)
 
+    tmpDir = parsed_args.tempdir
     if not os.path.isdir(tmpDir) :
-        print(f'Temporary directory {tmpDir} does not exist.')
+        print(f'*** Temporary directory {tmpDir} does not exist.')
         return 1
 
-    # Make more use of this - not passed in to many functions yet.
-    verbose = parsed_args.verbose
+    if verbose :
+        print()
+        print(f'Running {parsed_args.cmd} command ..')
 
     if parsed_args.cmd == 'generate' :
-        print('generate .. command')
         # Handle verbose, alternative file location options
-        dataDir = parsed_args.datadir
-        df = pcgen.regenerateDataFrame(dataDir, tmpDir, verbose=verbose)
+        df = pcgen.regenerateDataFrame(parsed_args.datadir, tmpDir, verbose=verbose)
         if not df.empty :
-            writeCachedDataFrame(df, tmpDir, parsed_args.cachefile)
+            writeCachedDataFrame(df, tmpDir, parsed_args.cachefile, verbose=verbose)
         else :
             return 1
     else :
         # Need to retrieve cached data
-        df = readCachedDataFrameFromFile(tmpDir, parsed_args.cachefile)
+        df = readCachedDataFrame(tmpDir, parsed_args.cachefile, verbose)
         if df.empty :
             print()
             print('*** No dataframe read from cache')
@@ -377,17 +392,12 @@ def main() :
             print(f'info .. command for {parsed_args.postcode}')
             displayExample(df, example=parsed_args.postcode, plotter=parsed_args.plotter, dimension=10)
         elif parsed_args.cmd == 'df_info' :
-            print('Run df_info command ...')
             displayBasicInfo(df)
         elif parsed_args.cmd == 'stats' :
-            # Could have a geog component.
-            print('Run stats command ...')
+            # Could have a geog component ????
             aggregate(df)
         elif parsed_args.cmd == 'to_csv' :
-            outDir = parsed_args.outdir
-            postcodeArea = parsed_args.area
-            print('Run to_csv command ...')
-            saveAsCSV(df, outDir, postcodeArea)
+            saveDataframeAsCSV(df, parsed_args.outdir, parsed_args.area)
         elif parsed_args.cmd == 'plot' :
             print(f'Run plot command for "{parsed_args.place}" ..')
             # Work out if the place is a postcode, a grid square, <others?> or 'all'
@@ -417,6 +427,8 @@ def main() :
             return 1
 
     return 0    # Not always - set status
+
+######################################################################################
 
 if __name__ == '__main__' :
     status = main()

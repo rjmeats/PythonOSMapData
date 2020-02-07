@@ -1,3 +1,5 @@
+import os
+
 from cv2 import cv2
 from tkinter import Tk, Canvas, mainloop
 
@@ -249,13 +251,19 @@ def plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,12
 
     return img
 
-def writeImageArrayToFileUsing(filename, img, plotter='CV2') :
+def writeImageArrayToFile(filename, img, plotter='CV2') :
     if plotter == 'CV2' :
         writeImageArrayToFileUsingCV2(filename, img)
     else :
         writeImageArrayToFileUsingTK(filename, img)
 
 def writeImageArrayToFileUsingCV2(filename, img) :
+
+    outDir = os.path.dirname(filename)
+    if not os.path.isdir(outDir) :
+        print(f'Creating directory {outDir} ..')
+        os.makedirs(outDir)
+
     if cv2.imwrite(filename, convertToBGR(img)) :
         print(f'Image file saved as: {filename}')
     else :

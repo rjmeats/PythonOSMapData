@@ -2,6 +2,7 @@ OSData
 OSDocs
 pngs
 output
+out
 __pycache__
 .pytest_cache
 .vscode

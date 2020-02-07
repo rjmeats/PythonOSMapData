@@ -10,17 +10,33 @@ import postcodesplot as pcplot
 
 #############################################################################################
 
-def saveAsCSV(df, tmpDir) :
-    outputDir = tmpDir + '/' + 'output'
-    outFile = outputDir + '/' + 'postcodes.out.csv'
+def saveAsCSV(df, outDir, postcodeArea='all') :
+
+    if postcodeArea == None :
+        postcodeArea = 'all'
+
+    outFile = f'{outDir}/postcodes.{postcodeArea.lower()}.csv'
 
     print(f'Saving dataframe to CSV file {outFile} ..')
-    if not os.path.isdir(outputDir) :
-        os.makedirs(outputDir)
-        print(f'.. created output location {outputDir} ..')
+    if not os.path.isdir(outDir) :
+        os.makedirs(outDir)
+        print(f'.. created output location {outDir} ..')
 
-    df.to_csv(outFile, index=False)
-    print(f'.. saved dataframe to CSV file {outFile}')
+    doSave = True
+    if postcodeArea != 'all' :
+        dfToSave = df [ df['PostcodeArea'] == postcodeArea.upper() ]
+        print(f'.. filtering data to just {postcodeArea.upper()} postcodes : found {dfToSave.shape[0]} ..')
+        if dfToSave.shape[0] == 0 :
+            print()
+            print(f'*** No data found for postcode area "{postcodeArea.upper()}" : no output file produced.')
+            doSave = False
+    else :
+        dfToSave = df
+        print(f'.. unfiltered data - includes all {dfToSave.shape[0]} postcodes ..')
+
+    if doSave:
+        dfToSave.to_csv(outFile, index=False)
+        print(f'.. saved dataframe to CSV file {outFile}')
 
 #############################################################################################
 
@@ -196,10 +212,8 @@ def showAround(df, title, e, n, dimension_km, plotter) :
     print(f'bl = {bl} : tr = {tr}')
 
     pcplot.plotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bl, top_r=tr, plotter=plotter)
-    #if plotter == 'CV2' :
-    #    pcplot.cv2plotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
-    #elif plotter == 'Tk' :
-    #    pcplot.tkplotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bl, top_r=tr)
+
+    # Save file option ?
 
 import nationalgrid as ng
 def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
@@ -216,15 +230,15 @@ def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
 
     img = pcplot.plotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr, plotter=plotter)
     if savefilelocation != None :
-        filename = savefilelocation + '/' + 'postcodes.' + sqName + '.' + plotter.lower() +'.png'
-        pcplot.writeImageArrayToFileUsing(filename, img, plotter=plotter)
+        filename = savefilelocation + '/' + 'postcodes.' + sqName.lower() + '.' + plotter.lower() +'.png'
+        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
 
 def showAllGB(df, plotter='CV2', savefilelocation=None) :
     if plotter == 'CV2' :
         img = pcplot.cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
         if savefilelocation != None :
             filename = savefilelocation + '/' + 'postcodes.allGB.cv.png'
-            pcplot.writeImageArrayToFileUsingCV2(filename, img)
+            pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
     else :
         pcplot.tkplotSpecific(df, title='All GB', canvas_h=800, density=10)
 
@@ -265,16 +279,17 @@ def writeCachedDataFrame(df, tmpDir, cacheFile=None) :
         pickle.dump(df, f)
         print(f'.. written dataframe as binary object to cache file {cacheFile}')
 
-# Default location for files read and tmp working area
-defaultOSZipFile = "./OSData/PostCodes/codepo_gb.zip"
-defaultPostcodeAreasFile = "./OSData/PostCodes/postcode_district_area_lists.xls"
-defaultTempDir = os.path.dirname(defaultOSZipFile) + '/tmp'
-
 import argparse
 
+# Default location for source data files read and for a tmp working area (for unzipped data and cached data).
+defaultDataDir = "./OSData/PostCodes"
+defaultTmpDir = defaultDataDir + '/tmp'
+defaultOutDir = "./out"
+defaultImageOutDir = "./pngs"
+
 def addStandardArgumentOptions(subparser) :
-    subparser.add_argument('-v', '--verbose', action='store_true', help='Show some diagnostics')
-    subparser.add_argument('-t', '--tempdir', 
+    subparser.add_argument('-v', '--verbose', action='store_true', help='Show detailed diagnostics')
+    subparser.add_argument('-t', '--tempdir', default=defaultTmpDir, 
                         help='Set the temporary directory location (used for unzipping data and as the default cache location)')
 
     subparser.add_argument('-c', '--cachefile', help='Specify the location for the dataframe cache file')
@@ -290,6 +305,7 @@ def main() :
 
     subparser = subparsers.add_parser('generate', help='read OS data files to generate a cached dataframe for use with other commands')
     subparser.set_defaults(cmd='generate')
+    subparser.add_argument('-d', '--datadir', default=defaultDataDir, help='Directory location of the source data files to be loaded')
     addStandardArgumentOptions(subparser)
 
     subparser = subparsers.add_parser('df_info', help='Show info about the Pandas dataframe structure')
@@ -302,7 +318,8 @@ def main() :
 
     subparser = subparsers.add_parser('to_csv', help='Produce a csv file containing the postcodes dataset')
     subparser.set_defaults(cmd='to_csv')
-    subparser.add_argument('-o', '--outfile', type=argparse.FileType('w'), help='Specify the location for the output CSV file)')
+    subparser.add_argument('-o', '--outdir', default=defaultOutDir, help='Specify the directory location for the output CSV file')
+    subparser.add_argument('-a', '--area', help='A postcode area to filter the output by')
     addStandardArgumentOptions(subparser)
     
     subparser = subparsers.add_parser('info', help='Display info about a specified postcode')
@@ -312,8 +329,10 @@ def main() :
     addStandardArgumentOptions(subparser)
 
     subparser = subparsers.add_parser('plot', help='Plot a map around the specified postcode')
-    addStandardArgumentOptions(subparser)
     addPlotterArgumentOption(subparser)
+    subparser.add_argument('-o', '--outdir', default=defaultImageOutDir, 
+                        help='Specify the directory location for the image file, or set to "none" to suppress file production')
+    addStandardArgumentOptions(subparser)
     subparser.add_argument('place', help='Identifies the area to be plotted, in quotes if it contains any spaces')
     subparser.set_defaults(cmd='plot')
 
@@ -323,36 +342,32 @@ def main() :
     d = vars(parsed_args)
     print(d)
 
-    verbose = parsed_args.verbose
-    cachefile = parsed_args.cachefile
-
-    if parsed_args.tempdir != None :
-        tmpDir = parsed_args.tempdir
-        if not os.path.isdir(tmpDir) :
-            print(f'Temporary directory {tmpDir} does not exist.')
-            return 1
-    else :
-        tmpDir = defaultTempDir
-    
-    # ???? Allow these to be relocated ????
-    OSZipFile = defaultOSZipFile
-    postcodeAreasFile = defaultPostcodeAreasFile
-    outputFileLocation = './pngs'
-
+    # Check that a command option has been provided.
     if not 'cmd' in d:
         parser.print_help()
         return 1
-    elif parsed_args.cmd == 'generate' :
+
+    tmpDir = parsed_args.tempdir
+
+    if not os.path.isdir(tmpDir) :
+        print(f'Temporary directory {tmpDir} does not exist.')
+        return 1
+
+    # Make more use of this - not passed in to many functions yet.
+    verbose = parsed_args.verbose
+
+    if parsed_args.cmd == 'generate' :
         print('generate .. command')
         # Handle verbose, alternative file location options
-        df = pcgen.regenerateDataFrame(OSZipFile, tmpDir, postcodeAreasFile, verbose=verbose)
+        dataDir = parsed_args.datadir
+        df = pcgen.regenerateDataFrame(dataDir, tmpDir, verbose=verbose)
         if not df.empty :
-            writeCachedDataFrame(df, tmpDir, cachefile)
+            writeCachedDataFrame(df, tmpDir, parsed_args.cachefile)
         else :
             return 1
     else :
         # Need to retrieve cached data
-        df = readCachedDataFrameFromFile(tmpDir, cachefile)
+        df = readCachedDataFrameFromFile(tmpDir, parsed_args.cachefile)
         if df.empty :
             print()
             print('*** No dataframe read from cache')
@@ -369,9 +384,10 @@ def main() :
             print('Run stats command ...')
             aggregate(df)
         elif parsed_args.cmd == 'to_csv' :
+            outDir = parsed_args.outdir
+            postcodeArea = parsed_args.area
             print('Run to_csv command ...')
-            # ???? Where to save to ????
-            saveAsCSV(df, tmpDir)
+            saveAsCSV(df, outDir, postcodeArea)
         elif parsed_args.cmd == 'plot' :
             print(f'Run plot command for "{parsed_args.place}" ..')
             # Work out if the place is a postcode, a grid square, <others?> or 'all'
@@ -381,12 +397,15 @@ def main() :
             # Can these overlap ? E.g. Post area = NG square (populated). Certainly town names can clash.
             # Plotter control, dimensions control, control of whether or not to save as png and where
             
+            imageOutDir = parsed_args.outdir
+            if imageOutDir.lower() == 'none' :
+                imageOutDir = None
             if parsed_args.place == 'all' :
-                showAllGB(df, plotter=parsed_args.plotter, savefilelocation=outputFileLocation)
+                showAllGB(df, plotter=parsed_args.plotter, savefilelocation=imageOutDir)
             elif ng.checkGridSquareName(parsed_args.place) :
-                showGridSquare(df, parsed_args.place, plotter=parsed_args.plotter, savefilelocation=outputFileLocation)
+                showGridSquare(df, parsed_args.place, plotter=parsed_args.plotter, savefilelocation=imageOutDir)
             else :
-                status = showPostcode(df, parsed_args.place, plotter=parsed_args.plotter, savefilelocation=outputFileLocation)
+                status = showPostcode(df, parsed_args.place, plotter=parsed_args.plotter, savefilelocation=imageOutDir)
             #else :
             #    # How best to handle this
             #    #print()

@@ -617,3 +617,53 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
 
     return dfDenormalised
 
+#############################################################################################
+
+def displayBasicDataFrameInfo(df, verbose=False) :
+    """ See what the basic pandas info calls show about the dataframe. """
+
+    print()
+    print('###################################################')
+    print('################## type and shape #################')
+    print()
+    print(f'type(df) = {type(df)} : df.shape : {df.shape}') 
+    print()
+    print('################## print(df) #####################')
+    print()
+    print(df)
+    print()
+    print('################## df.dtypes ##################')
+    print()
+    print(df.dtypes)
+    print()
+    print('################## df.info() ##################')
+    print()
+    print(df.info())
+    print()
+    print('################## df.head() ##################')
+    print()
+    print(df.head())
+    print()
+    print('################## df.tail() ##################')
+    print()
+    print(df.tail())
+    print()
+    print('################## df.index ##################')
+    print()
+    print(df.index)
+    print()
+    print('################## df.columns ##################')
+    print()
+    print(df.columns)
+    print()
+    print('################## df.describe() ##################')
+    print()
+    print(df.describe())
+    print()
+    print('################## df.count() ##################')
+    print()
+    print(df.count())
+    print()
+    print('###################################################')
+
+    return 0

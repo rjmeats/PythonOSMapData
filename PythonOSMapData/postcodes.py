@@ -1,100 +1,139 @@
 import os
 import sys
-
 import zipfile
-import pandas as pd
 import pickle
 import argparse
+import random
 
-import postcodesgeneratedf as pcgen
-import postcodesplot as pcplot
-import nationalgrid as ng
+import pandas as pd
+
+'''
+Python utility to process Ordnance Survey 'OS Code-Point Open' postcode data for Great Britain.
+Data is loaded into a Pandas dataframe from OS source data files, and the dataframe can then
+be processed in various ways:
+- save the data as a CSV file
+- to look up details of a specific postcode
+- to plot 'maps' showing the locations of postcodes
+- to show aggregate statistics about postcodes
+The utility runs as a command-line program from the main() function at the bottom of this module.
+'''
+
+
+
+# Local Python files 
+import postcodesgeneratedf as pcgen     # To populate a dataframe from source data files
+import postcodesplot as pcplot          # To handle details of plotting postcode-based maps
+import nationalgrid as ng               # To handle OS National Grid squares
 
 #############################################################################################
 
-def saveDataframeAsCSV(df, outDir, postcodeArea='all', verbose=False) :
+# Postcode notes:
+#
+# .. using the 'NG2 6AG' postcode as an example.
+#
+# UK postcodes have a number of different detailed patterns, but the basic format is always:
+#
+#   <outward-code><inward-code>   e.g.
+# 
+# with optional space(s) between the outward and inward codes.
+# 
+# The outward code (e.g. 'NG2') format is:
+#
+#   <postcode-area><postcode-district>
+# 
+# and the inward code format (e.g. '6AG') is:
+#
+#   <postcode-sector><postcode-unit>
+#  
+# - <postcode-area> consist of one or two letters (e.g. 'NG' which relates to the Nottingham postcode area)
+# - <postcode-district> can be a single digit, two digits or a digit followed by a letter, (e.g. '2')
+# - <postcode-sector> is a single digit (eg. '6')
+# - <postcode-unit> is two letters (e.g. 'AG')
+#
+# Note that the inward code format is always 3 characters long. The outward code can be 2, 3 or 4 characters long.
+#
+# References:
+#
+# https://www.ordnancesurvey.co.uk/documents/product-support/user-guide/code-point-open-user-guide.pdf
+# https://en.wikipedia.org/wiki/Postcodes_in_the_United_Kingdom
+
+def normalisePostcodeFormat(postcode, verbose=False) :
+    '''Returns a postcode string converted into a normalised format, for each of matching.'''
+
+    # Some possible variability in post code strings which may represent the same postcode:
+    # - leading and trailing whitespace
+    # - use of upper or lower case letters
+    # - the number of spaces (if any) between the outward and inward parts
+    #
+    # We normalise an input postcode string so that:
+    # - leading and trailing whitespace is removed
+    # - letters are in upper case
+    # - any spaces within the postcode are initially removed
+    #   - if the resulting length is 5 characters, two spaces are inserted before the inward code
+    #   - if the resulting length is 6 characters, one space is inserted before the inward code
+    #   - if the resulting length is 7 characters, no spaces are inserted
+    #   - if the resulting length is less than 5 characters or more than 7 characters, this cannot
+    #     be a valid postcode, don't do any more with them.
+    # - this results in all valid postcodes having a normalised form which is 7 characters long
+    # - this matches the default formatting which is used in the OS postcode data file
+
+    # Convert to upper case, remove trailing spaces and internal spaces ...
+    npc = postcode.upper().strip().replace(' ', '')
+
+    # Insert space(s) before the last three characters for 5  and 6 character cases, to make the overall
+    # length 7 characters.
+    if len(npc) in [5,6] :
+        spaces = ' '*(7-len(npc))
+        npc = npc[0:-3] + spaces + npc[-3:]
+
+    if verbose :
+        print(f'Normalised postcode [{postcode}] to [{npc}]')
+
+    return npc
+
+#############################################################################################
+
+def saveDataframeAsCSV(df, postcodeArea='all', outDir=None, verbose=False) :
+    '''Saves postcode data in a dataframe to a CSV file, with the option to restrict the data 
+       saved to a specific postcode area.'''
+
+    if outDir == None :
+        print()
+        print(f'No output directory specified for saving CSV file.')
+        return 1
 
     if postcodeArea == None :
         postcodeArea = 'all'
 
+    # Generate a name to be used for the CSV file.
     outFile = f'{outDir}/postcodes.{postcodeArea.lower()}.csv'
 
-    print(f'Saving dataframe to CSV file {outFile} ..')
     if not os.path.isdir(outDir) :
+        print(f'.. creating output directory {outDir} ..')
         os.makedirs(outDir)
-        print(f'.. created output location {outDir} ..')
 
-    doSave = True
+    # Work out which rows in the data from to save in the CSV file.
     if postcodeArea != 'all' :
         dfToSave = df [ df['PostcodeArea'] == postcodeArea.upper() ]
-        print(f'.. filtering data to just {postcodeArea.upper()} postcodes : found {dfToSave.shape[0]} ..')
+        print(f'.. using filtered data - just postcodes in the {postcodeArea.upper()} area : found {dfToSave.shape[0]} ..')
         if dfToSave.shape[0] == 0 :
             print()
             print(f'*** No data found for postcode area "{postcodeArea.upper()}" : no output file produced.')
-            doSave = False
+            return 1
     else :
         dfToSave = df
-        print(f'.. unfiltered data - includes all {dfToSave.shape[0]} postcodes ..')
+        print(f'.. using unfiltered data - includes all {dfToSave.shape[0]} postcodes ..')
 
-    if doSave:
-        dfToSave.to_csv(outFile, index=False)
-        print(f'.. saved dataframe to CSV file {outFile}')
-
-    return 0
-
-#############################################################################################
-
-def displayBasicDataFrameInfo(df, verbose=False) :
-    """ See what the basic pandas info calls show about the dataframe. """
-
-    print()
-    print('###################################################')
-    print('################## type and shape #################')
-    print()
-    print(f'type(df) = {type(df)} : df.shape : {df.shape}') 
-    print()
-    print('################## print(df) #####################')
-    print()
-    print(df)
-    print()
-    print('################## df.dtypes ##################')
-    print()
-    print(df.dtypes)
-    print()
-    print('################## df.info() ##################')
-    print()
-    print(df.info())
-    print()
-    print('################## df.head() ##################')
-    print()
-    print(df.head())
-    print()
-    print('################## df.tail() ##################')
-    print()
-    print(df.tail())
-    print()
-    print('################## df.index ##################')
-    print()
-    print(df.index)
-    print()
-    print('################## df.columns ##################')
-    print()
-    print(df.columns)
-    print()
-    print('################## df.describe() ##################')
-    print()
-    print(df.describe())
-    print()
-    print('################## df.count() ##################')
-    print()
-    print(df.count())
-    print()
-    print('###################################################')
+    # Generate the file using Pandas function.
+    print(f'.. writing data to CSV file {outFile} .. ', flush=True, end='')
+    dfToSave.to_csv(outFile, index=False)       # index=False => don't include the row ID value.
+    print(f'done.')
 
     return 0
 
 #############################################################################################
 
+# ???? To be redone.
 def produceStats(df, verbose=False) :
 
     print(f'############### Grouping by PostcodeArea, all columns ###############')
@@ -134,84 +173,235 @@ def produceStats(df, verbose=False) :
     
 #############################################################################################
 
+def displayPostcodeInfo(df, postcode='NG2 6AG', verbose=False) :
+    '''Displays data relating to the specified postcode. Returns 0 if the postcode is found, 1 if not.'''
 
-def displayPostcodeInfo(df, postcode='NG2 6AG', plotter='CV2', dimension=25, verbose=False) :
-    formattedPostcode = normalisePostCodeFormat(postcode)
+    normalisedPostcode = normalisePostcodeFormat(postcode)
 
-    print()
-    print('###############################################################')
     print()
     print(f'Data for postcode {postcode}')
-    print()
-    format="Vertical"
+    if verbose: 
+        print()
+        print(f' - normalised format {normalisedPostcode}')
 
-    founddf = df [df['Postcode'] == formattedPostcode]
+    print()
+
+    founddf = df [df['Postcode'] == normalisedPostcode]
     if founddf.empty :
-        print(f'*** Postcode not found : {formattedPostcode}')
+        print(f'*** Postcode not found : {normalisedPostcode}')
         return 1
 
-    if format == "Vertical" :
-        # Print vertically, so all columns are listed
+    orientation='Vertical'
+    if orientation == 'Vertical' :
+        # Print vertically, so all columns are listed on separate lines
+        pd.set_option('display.max_rows', 100)                  # Allow for lots of fields
         print(founddf.transpose(copy=True))
-    elif format == "Horizontal" :
+    elif orientation == 'Horizontal' :
         # Print horizontally, no wrapping, just using the available space, omitting columns in the middle
-        # if needed. (The default setting.)
+        # if needed. (The default Pandas print formatting.)
         print(founddf)
-    elif format == "HorizontalWrap" :
-        # Print horizontally, wrapping on to the next line, so all columns are listed
+    elif orientation == 'HorizontalWrap' :
+        # Print horizontally, wrapping on to the next line, so all columns are listed.
         pd.set_option('display.expand_frame_repr', False)
         print(founddf)
-        pd.set_option('display.expand_frame_repr', True)        # Reset to default.
     else :
-        print('f*** Unrecognised output row format: {format}')
+        print(f'*** Unrecognised printing orientation: {orientation}')
+        print()
         print(founddf)
-
-    print()
-    print('###############################################################')
-
-    showPostcode(df, formattedPostcode, plotter, savefilelocation=None)
 
     return 0
 
-def normalisePostCodeFormat(postCode) :
-    pc = postCode.upper().strip().replace(' ', '')
+#############################################################################################
 
-    # Formats which we can use:
-    # 'X9##9XX',
-    # 'X99#9XX',
-    # 'X9X#9XX',
-    # 'XX9#9XX',
-    # 'XX999XX',
-    # 'XX9X9XX'
-    # all 7 chars long
-    # If more than 7, leave - must be wrong
-    # If 6 chars long, put in a space in the middle
-    # If 5 chars long, put in two spaces in the middle
-    # If less than 5, leave - must be wrong
-    # Don't bother checking letter/number aspects - just trying to smooth out spacing/case issues here.
+# Functions to handle the initial processing of the 'plot' command, to work out what 'place'
+# to plot, invoking a detailed plotting function in a separate module (which allows a choice
+# of plotting tool, 'CV2' or 'TK').
+#
+# The plot command requires a 'place' argument from the command line, which is then used
+# to work out what sort of plot to perform and on what part of the National Grid.
+#
+# The 'place' argument can take a number of different values:
+#
+# - one of several special values:
+#   - 'all' : plot for the whole of Great Britain
+#   - 'random_postcode' : plot for a postcode selected at random from the dataframe
+#   - 'random_square'   : plot for a National Grid 100x100km square selected at random
+# - a two-letter top-level National Grid square identifier XX
+#   - input format is'NG:<XX>'
+#   - or if there is no Postcode area with this value, can just use 'XX' 
+# - a one or two-letter Postcode area identier YY
+#   - input format is'Area:<YY>'
+#   - or if there is no National Grid square with this value, can just use 'YY' 
+# - if a two letter place argument can be both a National Grid Square or a Postcode
+#   area, then the command asks for more specific input format to be used
+# - a postcode - anything matching a postcode regular expression is treated as a possible postcode
+# - ???? Potentially others - countries, counties, Post districts, city/town names
+# - ???? Potentially an area specified using National Grid coordindates
 
-    if len(pc) == 6 :
-        pc = pc[0:3] + ' ' + pc[3:]
-        print(f'6 : Modified {postCode} to {pc}')
-    elif len(pc) == 5 :
-        pc = pc[0:2] + '  ' + pc[2:]
-        print(f'5 : Modified {postCode} to {pc}')
+def plotPlace(df, placeArg, plotter='CV2', imageOutDir=None, verbose=False) :
+    '''Plots points on a 'map' image showing the position of each postcode.'''
 
-    return pc
+    # Work out how the 'place' argument from the command line is interpreted as a place type and value.
+    placeType,placeValue = extractTypeValueFromPlaceArgs(df, placeArg, verbose)
+    if placeType == '' :
+        # Invalid argumnent, already reported.
+        return 1
 
-def showPostcode(df, postCode, plotter='CV2', savefilelocation=None) :
+    # Special value for the output directory to indicate that the output image file should not be saved.
+    if imageOutDir.lower() == 'none' :
+        imageOutDir = None
 
-    formattedPostCode = normalisePostCodeFormat(postCode)
+    if placeType == 'all' :
+        plotAllGB(df, plotter, imageOutDir, verbose)
+    elif placeType == 'pa' :
+        if placeValue.lower() == 'random' :
+            placeValue = getRandomPostcodeArea(df)
+            print(f'Using random Postcode area "{placeValue}" ..')
+        if checkPostcodeAreaExists(df, placeValue) :
+            plotPostcodeArea(df, placeValue, plotter, imageOutDir, verbose)
+        else :
+            print()
+            print(f'"{placeArg}" is not recognised as a Postcode Area.')
+            return 1
+    elif placeType == 'pc' :
+        if placeValue.lower() == 'random' :
+            placeValue = getRandomPostcode(df)
+            print(f'Using random postcode "{placeValue}" ..')
+        if checkPostcodeExists(df, placeValue) :
+            plotPostcode(df, placeValue, plotter, imageOutDir, verbose)
+        else :
+            print()
+            print(f'"{placeArg}" was not recognised as a Postcode.')
+            return 1
+    elif placeType == 'ng' :
+        if placeValue.lower() == 'random' :
+            placeValue = getRandomGridSquare(df)
+            print(f'Using random National Grid square "{placeValue}" ..')
+        if ng.nonSeaGridSquareNameExists(placeValue) :
+            plotGridSquare(df, placeValue, plotter, imageOutDir, verbose)
+        else :
+            print()
+            print(f'"{placeArg}" is not recognised as a National Grid square.')
+            return 1
+    else :
+        print()
+        print(f'"{placeType}" is not a recognised place type.')
+        print()
+        showPlaceArgUsage()
+        return 1
 
-    founddf = df [df['Postcode'] == formattedPostCode]
+    return 0
+
+def extractTypeValueFromPlaceArgs(df, placeArg, verbose=False) :
+    '''Inspect the 'place' argument from the command line and return a place type and place value.'''
+
+    badReturn = ('','')     # For use when we find an error
+    placeType = ''
+    placeValue = ''
+
+    badArgument = False
+    placeArg = placeArg.strip()
+    if ':' in placeArg :
+        # If the place argument has a ':' in it, then the format should be <type>:<value>
+        argComponents = placeArg.split(':')
+        if len(argComponents) != 2 :
+            badArgument = True
+        else :
+            placeType = argComponents[0].strip()
+            placeValue = argComponents[1].strip()
+    else :
+        # We need to deduce the place type
+        if placeArg.lower() == 'all' :
+            placeType, placeValue = 'all', 'GB'
+        elif len(placeArg) == 1 :
+            # Assume it's a postcode area
+            placeType, placeValue = 'pa', placeArg
+        elif len(placeArg) == 2 :
+            # Work out if this can only be a postcode area or only a National Grid square, not both
+            gridSquareExists = ng.nonSeaGridSquareNameExists(placeArg)
+            postcodeAreaExists = checkPostcodeAreaExists(df, placeArg)
+            if gridSquareExists and not postcodeAreaExists :
+                placeType, placeValue = 'ng', placeArg
+            elif gridSquareExists and not postcodeAreaExists :
+                placeType, placeValue = 'pa', placeArg
+            elif gridSquareExists and postcodeAreaExists :
+                print()
+                print(f'"{placeArg}" is ambiguous - it matches a Postcode Area and a National Grid square.')
+                print(f'Please use "pa:{placeArg}" or "ng:{placeArg}" to indicate which to use.')
+                return badReturn
+            else :
+                print()
+                print(f'"{placeArg}" is not recognised as a Postcode Area or a National Grid square.')
+                return badReturn
+        elif len(placeArg) >= 5 :
+            # Assume it's a postcode
+            placeType, placeValue = 'pc', placeArg
+        else :
+            badArgument = True
+
+    if badArgument :
+        print()
+        print(f'"place" argument {placeArg} is not recognised.')
+        print()
+        showPlaceArgUsage()
+        return badReturn
+
+    if verbose :
+        print(f'Interpretted place argument "{placeArg}" as placetype={placeType} : placevalue={placeValue}')
+
+    return (placeType, placeValue)
+
+def showPlaceArgUsage():
+    print('Usage for the "place" argument:')
+    # ????
+
+def checkPostcodeAreaExists(df, code) :
+    dfCheck = df [ df['PostcodeArea'] == code.strip().upper() ]
+    #print(dfCheck[0:1].transpose(copy=True))
+    return dfCheck.shape[0] > 0
+
+def checkPostcodeExists(df, code) :
+    normalisedCode = normalisePostcodeFormat(code)
+    dfCheck = df [ df['Postcode'] == normalisedCode.strip().upper() ]
+    print(dfCheck[0:1].transpose(copy=True))
+    return dfCheck.shape[0] > 0
+
+def getRandomPostcode(df) :
+    pos = random.randrange(0, df.shape[0])
+    postcode = df.loc[pos, 'Postcode']
+    return postcode
+
+def getRandomPostcodeArea(df) :
+    pos = random.randrange(0, df.shape[0])
+    postcodeArea = df.loc[pos, 'PostcodeArea']
+    return postcodeArea
+
+def getRandomGridSquare(df) :
+    l = ng.getNonSeaGridSquareNames()
+    pos = random.randrange(0, len(l))
+    sq = l[pos]
+    return sq
+
+# Actually plotting ...
+
+def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False) :
+
+    formattedPostcode = normalisePostcodeFormat(postcode)
+
+    founddf = df [df['Postcode'] == formattedPostcode]
     if founddf.empty :
-        print(f'*** Postcode not found in dataframe : {postCode}')
+        print(f'*** Postcode not found in dataframe : {postcode}')
         return 1
     else :
-        showAround(df, postCode, founddf['Eastings'], founddf['Northings'], 10, plotter)
+        plotAround(df, postcode, founddf['Eastings'], founddf['Northings'], 10, plotter)
         return 0
 
-def showAround(df, title, e, n, dimension_km, plotter) :
+def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, verbose=False) :
+    # ????
+    print()
+    print(f'Plot postcode area not yet implemented - {postcodeArea}')
+
+def plotAround(df, title, e, n, dimension_km, plotter, verbose=False) :
     dimension_m = dimension_km * 1000       # m
     bl = (int(e-dimension_m/2), int(n-dimension_m/2))
     tr = (int(e+dimension_m/2), int(n+dimension_m/2))
@@ -221,7 +411,7 @@ def showAround(df, title, e, n, dimension_km, plotter) :
 
     # Save file option ?
 
-def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
+def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
     sq = ng.dictGridSquares[sqName.upper()]        
     print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
     print(f'{sq.getPrintGridString()}')
@@ -238,7 +428,7 @@ def showGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None) :
         filename = savefilelocation + '/' + 'postcodes.' + sqName.lower() + '.' + plotter.lower() +'.png'
         pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
 
-def showAllGB(df, plotter='CV2', savefilelocation=None) :
+def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
     if plotter == 'CV2' :
         img = pcplot.cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
         if savefilelocation != None :
@@ -247,19 +437,19 @@ def showAllGB(df, plotter='CV2', savefilelocation=None) :
     else :
         pcplot.tkplotSpecific(df, title='All GB', canvas_h=800, density=10)
 
-######################################################################################
+#############################################################################################
 
 # Default locations for various files - can be overridden from the command line options.
-defaultDataDir = "./OSData/PostCodes"       # Where the source data files are
+defaultDataDir = './OSData/Postcodes'       # Where the source data files are
 defaultTmpDir = defaultDataDir + '/tmp'     # Working area, for unzipping and caching
-defaultOutDir = "./out"                     # Output file location.
-defaultImageOutDir = "./pngs"               # Output file location for image files.
+defaultOutDir = './out'                     # Output file location.
+defaultImageOutDir = './pngs'               # Location for image files produced.
 
-######################################################################################
+#############################################################################################
 
-# Generating the dataframe from source data files takes a few minutes, so cache the dataframe
-# in a file in the tmp directory, and read it in again for read-only commands which run against
-# the dataframe.
+# Generating the dataframe from source data files takes a few minutes, so we cache the dataframe
+# generated in a file in the tmp directory, and read it in again next time we run the program if
+# it's not a 'generate' command being processed.
 
 def getCacheFilePath(tmpDir=defaultTmpDir) :
     '''Where is the cached dataframe file located ?'''
@@ -302,7 +492,7 @@ def writeCachedDataFrame(df, tmpDir=defaultTmpDir, cacheFile=None, verbose=False
         pickle.dump(df, f)
         print(f'done.')
 
-######################################################################################
+#############################################################################################
 
 # Section covering command-line argument handling and the 'main' program.
 
@@ -367,7 +557,7 @@ def addPlotterArgumentOption(subparser) :
 
 def processCommand(parsedArgs) :
     '''Use the arguments returned by argparse to work out which sub-command to perform, and perform it.
-    Returns 0 if the sub-command was successful, 1 if not.'''
+    Returns 0 if the sub-command was successful, or 1 if there is an error.'''
 
     # The 'verbose' argument can apply to any of the sub-commands.
     verbose = parsedArgs.verbose
@@ -386,66 +576,47 @@ def processCommand(parsedArgs) :
     if verbose :
         print()
         print(f'Running {parsedArgs.cmd} command ..')
+        print()
 
     # There are two types of sub-command:
     # - 'generate' which reads source data files and creates a Pandas dataframe for use by other sub-commands.
     #   The dataframe is written to a cache file.
     # - all the other sub-commands operate on a dataframe produced by reading in the cached dataframe from file.
+    status = 0
     if parsedArgs.cmd == 'generate' :
         # Generate and then cache the dataframe
         df = pcgen.generateDataFrameFromSourceData(parsedArgs.datadir, tmpDir, verbose)
         if df.empty :
             print()
             print('*** No dataframe generated from source data.')
-            return 1
+            status = 1
         else :
             writeCachedDataFrame(df, tmpDir, parsedArgs.cachefile, verbose)
+            status = 0
     else :
-        # Retrieve the cached dataframe into memory, and then apply the relevant command to it.
+        # Retrieve the cached dataframe produced by a previous 'generate' sub-command into memory.
         df = readCachedDataFrame(tmpDir, parsedArgs.cachefile, verbose)
         if df.empty :
             print()
             print('*** No dataframe read from cache.')
             return 1
 
-        status = 0
-        # Process the relevant sub-command using the dataframe read from cache.        
-        if parsedArgs.cmd == 'info' :
-            status = displayPostcodeInfo(df, postcode=parsedArgs.postcode, plotter=parsedArgs.plotter, dimension=10, verbose=verbose)
-        elif parsedArgs.cmd == 'df_info' :
-            status = displayBasicDataFrameInfo(df, verbose)
+        # Process the specified sub-command using the dataframe read from cache.
+        if parsedArgs.cmd == 'to_csv' :
+            status = saveDataframeAsCSV(df, parsedArgs.area, parsedArgs.outdir, verbose)
+        elif parsedArgs.cmd == 'info' :
+            status = displayPostcodeInfo(df, parsedArgs.postcode, verbose)
         elif parsedArgs.cmd == 'stats' :
             status = produceStats(df, verbose)
-        elif parsedArgs.cmd == 'to_csv' :
-            # Option to save all postcode data to CSV, or just for a specified postcode area.
-            status = saveDataframeAsCSV(df, parsedArgs.outdir, parsedArgs.area, verbose)
         elif parsedArgs.cmd == 'plot' :
-            print(f'Run plot command for "{parsedArgs.place}" ..')
-            # Work out if the place is a postcode, a grid square, <others?> or 'all'
-            # Allow for spaces, and case. Further options:
-            # county, post area, post district, district/ward/borough etc, ONS unit code ?
-            # Or just a rectangle identified using NG top-left, bottom right/dimensions.
-            # Can these overlap ? E.g. Post area = NG square (populated). Certainly town names can clash.
-            # Plotter control, dimensions control, control of whether or not to save as png and where
-            
-            imageOutDir = parsedArgs.outdir
-            if imageOutDir.lower() == 'none' :
-                imageOutDir = None
-            if parsedArgs.place == 'all' :
-                showAllGB(df, plotter=parsedArgs.plotter, savefilelocation=imageOutDir)
-            elif ng.checkGridSquareName(parsedArgs.place) :
-                showGridSquare(df, parsedArgs.place, plotter=parsedArgs.plotter, savefilelocation=imageOutDir)
-            else :
-                status = showPostcode(df, parsedArgs.place, plotter=parsedArgs.plotter, savefilelocation=imageOutDir)
-            #else :
-            #    # How best to handle this
-            #    #print()
-            #    #print(f'*** unrecognised place {parsedArgs.area} to plot')
-            #    return
-            # ???? Handle arbitrary areas ?
+            status = plotPlace(df, parsedArgs.place, parsedArgs.plotter, parsedArgs.outdir)
+        elif parsedArgs.cmd == 'df_info' :
+            status = pcgen.displayBasicDataFrameInfo(df, verbose)
         else :
-            print(f'Unrecognised command: {parsedArgs.cmd}')
-            return 1
+            print(f'Unrecognised sub-command: {parsedArgs.cmd}')
+            status = 1
+        
+    return status
 
 def main() :
     '''Main program processing: read command line arguments, and invoke functions to process the specified commands.
@@ -470,7 +641,7 @@ def main() :
 
     return status
 
-######################################################################################
+#############################################################################################
 
 if __name__ == '__main__' :
     status = main()

@@ -213,6 +213,17 @@ def checkGridSquareName(squareName) :
     # ???? Include a full 6-digit easting and northing for the south-west corner of the square ?
     return dict
 
+# Is this a valid 100x100 two-letter main grid square identifier, not entirely sea ?
+def nonSeaGridSquareNameExists(squareName) :
+    if squareName.upper() in dictGridSquares:
+        sq = dictGridSquares[squareName.upper()]
+        return sq.isRealSquare
+    else :
+        return False
+
+def getNonSeaGridSquareNames() :
+    return [k for k,v in dictGridSquares.items() if v.isRealSquare]    
+
 # Get the name of the grid square north of this one (or an empty string if we're already on the edge)
 def nextSquareNorth(squareName) :
     nextSqName = ""

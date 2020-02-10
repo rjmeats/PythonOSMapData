@@ -236,79 +236,27 @@ def displayPostcodeInfo(df, postcode='NG2 6AG', verbose=False) :
 #   area, then the command asks for more specific input format to be used
 # - a postcode - anything matching a postcode regular expression is treated as a possible postcode
 # - ???? Potentially others - countries, counties, Post districts, city/town names
-# - ???? Potentially an area specified using National Grid coordindates
+# - ???? Potentially an area specified using National Grid coordindates, beyond the top-level squares
 
-def plotPlace(df, placeArg, plotter='CV2', imageOutDir=None, verbose=False) :
-    '''Plots points on a 'map' image showing the position of each postcode.'''
+def extractPlaceInfoFromPlaceArgs(df, placeArg, verbose=False) :
+    '''Inspect the 'place' argument from the command line.
+       Return a (place type, place value) tuple from it.'''
 
-    # Work out how the 'place' argument from the command line is interpreted as a place type and value.
-    placeType,placeValue = extractTypeValueFromPlaceArgs(df, placeArg, verbose)
-    if placeType == '' :
-        # Invalid argumnent, already reported.
-        return 1
-
-    # Special value for the output directory to indicate that the output image file should not be saved.
-    if imageOutDir.lower() == 'none' :
-        imageOutDir = None
-
-    if placeType == 'all' :
-        plotAllGB(df, plotter, imageOutDir, verbose)
-    elif placeType == 'pa' :
-        if placeValue.lower() == 'random' :
-            placeValue = getRandomPostcodeArea(df)
-            print(f'Using random Postcode area "{placeValue}" ..')
-        if checkPostcodeAreaExists(df, placeValue) :
-            plotPostcodeArea(df, placeValue, plotter, imageOutDir, verbose)
-        else :
-            print()
-            print(f'"{placeArg}" is not recognised as a Postcode Area.')
-            return 1
-    elif placeType == 'pc' :
-        if placeValue.lower() == 'random' :
-            placeValue = getRandomPostcode(df)
-            print(f'Using random postcode "{placeValue}" ..')
-        if checkPostcodeExists(df, placeValue) :
-            plotPostcode(df, placeValue, plotter, imageOutDir, verbose)
-        else :
-            print()
-            print(f'"{placeArg}" was not recognised as a Postcode.')
-            return 1
-    elif placeType == 'ng' :
-        if placeValue.lower() == 'random' :
-            placeValue = getRandomGridSquare(df)
-            print(f'Using random National Grid square "{placeValue}" ..')
-        if ng.nonSeaGridSquareNameExists(placeValue) :
-            plotGridSquare(df, placeValue, plotter, imageOutDir, verbose)
-        else :
-            print()
-            print(f'"{placeArg}" is not recognised as a National Grid square.')
-            return 1
-    else :
-        print()
-        print(f'"{placeType}" is not a recognised place type.')
-        print()
-        showPlaceArgUsage()
-        return 1
-
-    return 0
-
-def extractTypeValueFromPlaceArgs(df, placeArg, verbose=False) :
-    '''Inspect the 'place' argument from the command line and return a place type and place value.'''
-
-    badReturn = ('','')     # For use when we find an error
-    placeType = ''
-    placeValue = ''
+    failureIndicator = ('','')     # Returned when we find an error in the argument.
+    placeType, placeValue = ('','')
 
     badArgument = False
     placeArg = placeArg.strip()
+
     if ':' in placeArg :
         # If the place argument has a ':' in it, then the format should be <type>:<value>
         argComponents = placeArg.split(':')
         if len(argComponents) != 2 :
             badArgument = True
         else :
-            placeType = argComponents[0].strip()
-            placeValue = argComponents[1].strip()
+            placeType, placeValue = argComponents[0].strip().lower(), argComponents[1].strip()
+            if placeType.lower() not in ['pa', 'pc', 'ng']:
+                badArgument = True
     else :
         # We need to deduce the place type
         if placeArg.lower() == 'all' :
@@ -322,17 +270,17 @@ def extractTypeValueFromPlaceArgs(df, placeArg, verbose=False) :
             postcodeAreaExists = checkPostcodeAreaExists(df, placeArg)
             if gridSquareExists and not postcodeAreaExists :
                 placeType, placeValue = 'ng', placeArg
-            elif gridSquareExists and not postcodeAreaExists :
+            elif not gridSquareExists and postcodeAreaExists :
                 placeType, placeValue = 'pa', placeArg
             elif gridSquareExists and postcodeAreaExists :
                 print()
-                print(f'"{placeArg}" is ambiguous - it matches a Postcode Area and a National Grid square.')
+                print(f'"{placeArg}" is an ambiguous place identifier - it is a Postcode Area and also a National Grid square.')
                 print(f'Please use "pa:{placeArg}" or "ng:{placeArg}" to indicate which to use.')
-                return badReturn
+                return failureIndicator
             else :
                 print()
                 print(f'"{placeArg}" is not recognised as a Postcode Area or a National Grid square.')
-                return badReturn
+                return failureIndicator
         elif len(placeArg) >= 5 :
             # Assume it's a postcode
             placeType, placeValue = 'pc', placeArg
@@ -344,7 +292,7 @@ def extractTypeValueFromPlaceArgs(df, placeArg, verbose=False) :
         print(f'"place" argument {placeArg} is not recognised.')
         print()
         showPlaceArgUsage()
-        return badReturn
+        return failureIndicator
 
     if verbose :
         print(f'Interpretted place argument "{placeArg}" as placetype={placeType} : placevalue={placeValue}')
@@ -352,37 +300,108 @@ def extractTypeValueFromPlaceArgs(df, placeArg, verbose=False) :
     return (placeType, placeValue)
 
 def showPlaceArgUsage():
+    '''Prints out usage text for the 'place' command line argument.'''
     print('Usage for the "place" argument:')
     # ????
 
+def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbose=False) :
+    '''Dispatches plotting to detailed methods for each place type, after checking that the place is known.
+       Returns 0 if successful, 2 if the place is not known.'''
+
+    # Special value for the output directory to indicate that the output image file should not be saved.
+    if imageOutDir != None and imageOutDir.lower() == 'none' :
+        imageOutDir = None
+
+    # If the place value is 'random', generate an appropriate value to use.
+    if placeValue.lower() == 'random' :
+        if placeType == 'pa' :
+            placeValue = getRandomPostcodeArea(df)
+        elif placeType == 'pc' :
+            placeValue = getRandomPostcode(df)
+        elif placeType == 'ng' :
+            placeValue = getRandomGridSquare(df)
+        else :
+            print(f'Random option not supported for place type {placeType}')
+            return 1
+        print(f'Using random value "{placeValue}" ..')
+
+    if placeType == 'all' :
+        plotAllGB(df, plotter, imageOutDir, verbose)
+    elif placeType == 'pa' :
+        if checkPostcodeAreaExists(df, placeValue) :
+            plotPostcodeArea(df, placeValue, plotter, imageOutDir, verbose)
+        else :
+            print()
+            print(f'"{placeValue}" is not a known Postcode Area.')
+            return 2
+    elif placeType == 'pc' :
+        if checkPostcodeExists(df, placeValue) :
+            plotPostcode(df, placeValue, plotter, imageOutDir, verbose)
+        else :
+            print()
+            print(f'"{placeValue}" is not a known Postcode.')
+            return 2
+    elif placeType == 'ng' :
+        if ng.nonSeaGridSquareNameExists(placeValue) :
+            plotGridSquare(df, placeValue, plotter, imageOutDir, verbose)
+        else :
+            print()
+            print(f'"{placeValue}" is not a land-based National Grid square.')
+            return 2
+
+    return 0
+
 def checkPostcodeAreaExists(df, code) :
+    '''Does this Postcode Area exist in the dataframe ?'''
     dfCheck = df [ df['PostcodeArea'] == code.strip().upper() ]
-    #print(dfCheck[0:1].transpose(copy=True))
     return dfCheck.shape[0] > 0
 
 def checkPostcodeExists(df, code) :
+    '''Does this Postcode exist in the dataframe ?'''
     normalisedCode = normalisePostcodeFormat(code)
     dfCheck = df [ df['Postcode'] == normalisedCode.strip().upper() ]
     print(dfCheck[0:1].transpose(copy=True))
     return dfCheck.shape[0] > 0
 
+def getRandomCodeFromDataframe(df, columnName) :
+    '''Return a random value from the specified column of the dataframe.'''
+    randomRow = random.randrange(0, df.shape[0])
+    return df.loc[randomRow, columnName]
+
 def getRandomPostcode(df) :
-    pos = random.randrange(0, df.shape[0])
-    postcode = df.loc[pos, 'Postcode']
-    return postcode
+    '''Return a random Postcode value from the dataframe.'''
+    return getRandomCodeFromDataframe(df, 'Postcode')
 
 def getRandomPostcodeArea(df) :
-    pos = random.randrange(0, df.shape[0])
-    postcodeArea = df.loc[pos, 'PostcodeArea']
-    return postcodeArea
+    '''Return a random Postcode Area value from the dataframe.'''
+    return getRandomCodeFromDataframe(df, 'PostcodeArea')
 
 def getRandomGridSquare(df) :
+    '''Return a random land-based National Grid square name.'''
     l = ng.getNonSeaGridSquareNames()
-    pos = random.randrange(0, len(l))
-    sq = l[pos]
-    return sq
+    randomIndex = random.randrange(0, len(l))
+    return l[randomIndex]
 
-# Actually plotting ...
+# Functions to actually invoke the plotting functions. 
+
+def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
+    if plotter == 'TK' :
+        print()
+        print(f'*** Plot of all GB using TK plotter not attempted - can be very slow. Try the CV2 plotter.')
+        return 1
+
+    # Set the rectangular area to plot to cover the whole of the National Grid area (as E,N coorinates).
+    # Set the height (in pixels) of the canvas we're going to plot on. (Width is calculated).
+    bottomLeft = 0,0
+    topRight = 700000,1250000
+    img = pcplot.plotSpecific(df, title='All GB', 
+                    canvasHeight=800, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    # Save the image in a file.
+    if savefilelocation != None :
+        filename = savefilelocation + '/' + 'postcodes.allGB.png'
+        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
+
+    return 0
 
 def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False) :
 
@@ -396,20 +415,57 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
         plotAround(df, postcode, founddf['Eastings'], founddf['Northings'], 10, plotter)
         return 0
 
-def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, verbose=False) :
-    # ????
-    print()
-    print(f'Plot postcode area not yet implemented - {postcodeArea}')
-
 def plotAround(df, title, e, n, dimension_km, plotter, verbose=False) :
     dimension_m = dimension_km * 1000       # m
     bl = (int(e-dimension_m/2), int(n-dimension_m/2))
     tr = (int(e+dimension_m/2), int(n+dimension_m/2))
     print(f'bl = {bl} : tr = {tr}')
 
-    pcplot.plotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bl, top_r=tr, plotter=plotter)
+    pcplot.plotSpecific(df, title=title, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
 
     # Save file option ?
+
+def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, verbose=False) :
+    # ????
+    dfArea = df [ df['PostcodeArea'] == postcodeArea.upper()]
+    dfArea = dfArea [ dfArea['Eastings'] > 0 ]
+
+    town = dfArea.iloc[0, 9]    # ???? Use column name !
+    title = postcodeArea.upper() + ' = ' + town
+
+    bl=(10,10)
+    tr=(700000,700000)
+
+    # Work out plot area from max and mins
+    dfG = dfArea[ ['PostcodeArea', 'Eastings', 'Northings'] ].groupby('PostcodeArea').agg(
+                Min_E = ('Eastings', 'min'),
+                Max_E = ('Eastings', 'max'),
+                Min_N = ('Northings', 'min'),
+                Max_N = ('Northings', 'max')
+                    )
+
+    print(dfG)
+    min_e = dfG.iloc[0,0]
+    max_e = dfG.iloc[0,1]
+    min_n = dfG.iloc[0,2]
+    max_n = dfG.iloc[0,3]
+    print(min_e, max_e, min_n, max_n)
+
+    e_dimension = max_e - min_e
+    n_dimension = max_n - min_n
+
+    max_dimension = max(e_dimension, n_dimension)
+
+    margin=int(max_dimension / 10)
+    bl=(int(min_e)-margin, int(min_n)-margin)
+    tr=(int(max_e)+margin, int(max_n)+margin)
+
+    #if 1==1 : return
+
+    img = pcplot.plotSpecific(dfArea, title=title, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
+    if savefilelocation != None :
+        filename = savefilelocation + '/' + 'postcodes.' + 'pa.' + postcodeArea.lower() + '.' + plotter.lower() +'.png'
+        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
 
 def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
     sq = ng.dictGridSquares[sqName.upper()]        
@@ -423,19 +479,10 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
     tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
     print(f'bl = {bl} : tr = {tr}')
 
-    img = pcplot.plotSpecific(df, title=sqName, canvas_h=800, density=1, bottom_l=bl, top_r=tr, plotter=plotter)
+    img = pcplot.plotSpecific(df, title=sqName, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
     if savefilelocation != None :
-        filename = savefilelocation + '/' + 'postcodes.' + sqName.lower() + '.' + plotter.lower() +'.png'
+        filename = savefilelocation + '/' + 'postcodes.' + 'ng.' + sqName.lower() + '.' + plotter.lower() +'.png'
         pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
-
-def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
-    if plotter == 'CV2' :
-        img = pcplot.cv2plotSpecific(df, title='All GB', canvas_h=800, density=1)
-        if savefilelocation != None :
-            filename = savefilelocation + '/' + 'postcodes.allGB.cv.png'
-            pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
-    else :
-        pcplot.tkplotSpecific(df, title='All GB', canvas_h=800, density=10)
 
 #############################################################################################
 
@@ -609,7 +656,12 @@ def processCommand(parsedArgs) :
         elif parsedArgs.cmd == 'stats' :
             status = produceStats(df, verbose)
         elif parsedArgs.cmd == 'plot' :
-            status = plotPlace(df, parsedArgs.place, parsedArgs.plotter, parsedArgs.outdir)
+            # Work out how the 'place' argument from the command line is interpreted as a place type and value.
+            (placeType, placeValue) = extractPlaceInfoFromPlaceArgs(df, parsedArgs.place, verbose)
+            if placeType == '' :
+                # Invalid place argumnent (details have already been reported).
+                status = 1
+            status = plotPlace(df, placeType, placeValue, parsedArgs.plotter, parsedArgs.outdir)
         elif parsedArgs.cmd == 'df_info' :
             status = pcgen.displayBasicDataFrameInfo(df, verbose)
         else :

@@ -6,10 +6,12 @@ from tkinter import Tk, Canvas, mainloop
 pcDefaultColour = "black"
 pcDefaultColourRGB = "(0,0,0)"
 
-def assignAreasToColourGroups(df) :
+def assignAreasToColourGroups(df, verbose=False) :
     # Determine extent of each Postcode Area
 
-    print('Determining Eastings and Northing ranges by Postcode area:')
+    if verbose :
+            print('Determining Eastings and Northing ranges by Postcode area:')
+
     # Ignore 0s
     df = df [ df['Eastings'] != 0 ]
     dfAreaExtents = df[ ['PostcodeArea', 'Eastings', 'Northings'] ].groupby('PostcodeArea').agg(
@@ -20,12 +22,13 @@ def assignAreasToColourGroups(df) :
                 Max_N = ('Northings', 'max')
                     )
     dfAreaExtents.sort_values('Min_E', inplace=True)
-    print()
-    print('Eastings and Northing ranges by Postcode area:')
-    print()
-    print(type(dfAreaExtents))
-    print()
-    print(dfAreaExtents)
+    if verbose :
+        print()
+        print('Eastings and Northing ranges by Postcode area:')
+        print()
+        print(type(dfAreaExtents))
+        print()
+        print(dfAreaExtents)
 
     # ???? Algorithm to assign areas to colour groups so that close areas don't use the same colour. 
     # For now just use lots of colours and rely on chance ! 
@@ -49,10 +52,10 @@ def assignAreasToColourGroups(df) :
             n[i] = ci
         ac2.append( (n[0],n[1],n[2]))
 
-    print(ac2)
+    if verbose :
+        print(ac2)
+
     availableColoursRGB = ac2
-
-
 
     numGroups = len(availableColours)
 
@@ -92,9 +95,9 @@ def onObjectClick(event):
     print(f'obj={objID} : pc={pc}')
     print(pcinfo)
 
-def tkplotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
+def tkplotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
 
-    canvas_height, canvas_width, dfSlice = getScaledPlot(df, canvas_h, bottom_l, top_r, density)
+    canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
 
     global dfClickLookup
@@ -105,7 +108,7 @@ def tkplotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,
 
     # https://effbot.org/tkinterbook/canvas.htm
     master = Tk()
-    w = Canvas(master, width=canvas_width, height=canvas_height)
+    w = Canvas(master, width=canvas_width, height=canvasHeight)
     w.pack()
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
@@ -113,7 +116,7 @@ def tkplotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,
         if index % (100000/density) == 0 :
             print(index, es, ns, pc)
         colour = areaColourDict.get(area, pcDefaultColour)
-        objid = w.create_oval(es,canvas_height-ns,es,canvas_height-ns, fill=colour, outline=colour, width=2)
+        objid = w.create_oval(es,canvasHeight-ns,es,canvasHeight-ns, fill=colour, outline=colour, width=2)
         w.tag_bind(objid, '<ButtonPress-1>', onObjectClick)    
         #print(f'Adding objid: {objid}')
         tkObjDict[objid] = pc
@@ -130,18 +133,18 @@ def convertToBGR(imgArray) :
     """ Converts a 3-D [y,x,RGB] numpy array to [y,x,BGR] format, (for use with CV2) """
     return imgArray[:,:,::-1]
 
-def getScaledPlot(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
-    e0 = bottom_l[0]
-    e1 = top_r[0]
-    n0 = bottom_l[1]
-    n1 = top_r[1]
+def getScaledPlot(df, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+    e0 = bottomLeft[0]
+    e1 = topRight[0]
+    n0 = bottomLeft[1]
+    n1 = topRight[1]
     e_extent = e1 - e0
     n_extent = n1 - n0
 
-    print(f'canvas_h = {canvas_h} : bottom_l = {bottom_l} : top_r = {top_r}')
-    canvas_height = int(canvas_h)                        # pixels
-    canvas_width = int(canvas_h * e_extent / n_extent)   # pixels
-    scaling_factor = n_extent / canvas_h            # metres per pixel
+    print(f'canvasHeight = {canvasHeight} : bottomLeft = {bottomLeft} : topRight = {topRight}')
+    canvasHeight = int(canvasHeight)                        # pixels
+    canvas_width = int(canvasHeight * e_extent / n_extent)   # pixels
+    scaling_factor = n_extent / canvasHeight            # metres per pixel
 
     print(f'.. scale = {scaling_factor} : canvas_width = {canvas_width}')
 
@@ -151,23 +154,29 @@ def getScaledPlot(df, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), den
         dfSlice = df.copy().iloc[::density]
     else :
         dfSlice = df.copy()
-    #print(dfSlice)
+    #print(dfSlice.dtypes)
 
     dfSlice['e_scaled'] = (dfSlice['Eastings'] - e0) // scaling_factor
     dfSlice['n_scaled'] = (dfSlice['Northings'] - n0) // scaling_factor
+    #print(dfSlice.dtypes)
+    # Above can produce float type columns for e_scaled and n_scaled, which ends up being used to plot a non-integer rectangle.
+    # Convert to int for now, (= truncation?). Probably better to round/convert to int much later on when calling cv2.rectangle.
+    dfSlice = dfSlice.astype({'e_scaled': 'int32', 'n_scaled': 'int32'})
+    #print(dfSlice.dtypes)
+    #dfSlice.astype(int)
     #print(dfSlice)
 
     dfSlice = dfSlice [ dfSlice['Eastings'] > 0 ]
-    dfSlice = dfSlice [ (dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)]
+    dfSlice = dfSlice [ (dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvasHeight)]
     dfSlice = dfSlice [ (dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)]
 
     # Why can't the above be combined into one big combination ?
     # Also, any way to check n_scale and e_scaled are in a range ?
     #dfSlice = dfSlice [ dfSlice['Eastings'] > 0 &
-    #                    ((dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvas_height)) &
+    #                    ((dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvasHeight)) &
     #                    ((dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)) ]
 
-    return canvas_height, canvas_width, dfSlice
+    return canvasHeight, canvas_width, dfSlice
 
 # Map 
 from cv2 import cv2
@@ -195,41 +204,50 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100) :
+def cv2plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
 
-    canvas_height, canvas_width, dfSlice = getScaledPlot(df, canvas_h, bottom_l, top_r, density)
+    canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+
+    print()
+    print(dfSlice[0:1].T)
 
     global img
     global dfClickLookup
     global imgLookupIndex
-    img = newImageArray(canvas_height, canvas_width)
-    imgLookupIndex = np.full((canvas_height+2, canvas_width+2), 0, dtype='int32')   # +2s partly because of size of circle,
+    img = newImageArray(canvasHeight, canvas_width)
+    imgLookupIndex = np.full((canvasHeight+2, canvas_width+2), 0, dtype='int32')   # +2s partly because of size of circle,
     # but also getting some out of bounds errors before [-1,0,1] adjustment was there - because ????
     dfClickLookup = dfSlice
 
+    #print(dfSlice.dtypes)
+    
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
         if index % (100000/density) == 0 :
             print(index, es, ns, pc)
+            #print('...', type(index), type(es), type(ns), type(pc))
         colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
         #circle radius = 0 == single pixel. 
         #                          x
         # radius=1 gives a cross: xxx
         #                          x
-        # cv2.circle(img, center=(es, canvas_height-ns), radius=0, color=colour, thickness=-1)
+        # cv2.circle(img, center=(es, canvasHeight-ns), radius=0, color=colour, thickness=-1)
 
         x = 2   # Seems to work well
-        cv2.rectangle(img, pt1=(es, canvas_height-ns), pt2=(es+x, canvas_height-ns+x), color=colour, thickness=-1)
+        #if index % (1000/density) == 0 :
+        #    print('...', (es, canvasHeight-ns), ' : ', (es+x, canvasHeight-ns+x))
+        cv2.rectangle(img, pt1=(es, canvasHeight-ns), pt2=(es+x, canvasHeight-ns+x), color=colour, thickness=-1)
         # Record item against a small 3x3 square of points, not just the central one. Why is this necessary,
         # how does it relate to the radius value ? What about close postcodes overwriting each other ?
         for i in [-1,0,1] :
             for j in [-1,0,1] :
+                pass
                 imgLookupIndex[ns+i, es+j] = index
 
     cvtitle = 'Title' if title == None else title
-    v_km = (top_r[0] - bottom_l[0]) // 1000
-    h_km = (top_r[1] - bottom_l[1]) // 1000
+    v_km = (topRight[0] - bottomLeft[0]) // 1000
+    h_km = (topRight[1] - bottomLeft[1]) // 1000
     dimensions = f'{v_km} km x {h_km} km'
     cvtitle = f'{cvtitle} : {dimensions}'
     # For CV2 we need to reverse the colour ordering of the array to BGR
@@ -240,12 +258,12 @@ def cv2plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000
 
     return img
 
-def plotSpecific(df, title=None, canvas_h=1000, bottom_l=(0,0), top_r=(700000,1250000), density=100, plotter='CV2') :
+def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=1, plotter='CV2') :
     img = None
     if plotter.upper() == 'CV2' :
-        img = cv2plotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bottom_l, top_r=top_r)
+        img = cv2plotSpecific(df, title=title, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
     elif plotter.upper() == 'TK' :
-        tkplotSpecific(df, title=title, canvas_h=800, density=1, bottom_l=bottom_l, top_r=top_r)
+        tkplotSpecific(df, title=title, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
     else :
         print(f'*** Unknown plotter specified: {plotter}')
 

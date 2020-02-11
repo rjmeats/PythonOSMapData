@@ -46,7 +46,7 @@ class GridSquare :
     # For diagnostic printing out
     def getPrintGridString(self) :
         if self.isRealSquare :
-            return "{0:s}=({1:02d},{2:02d})".format(self.name, self.northingIndex, self.eastingIndex)
+            return "{0:s}=({1:02d},{2:02d})".format(self.name, self.eastingIndex, self.northingIndex)
         else :
             return "{0:10.10s}".format("")
 

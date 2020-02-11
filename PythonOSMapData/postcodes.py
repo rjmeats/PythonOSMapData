@@ -409,6 +409,63 @@ def getRandomPlaceType(placeTypeList) :
 # - a title for the displayed plot
 # - what filename to use for saving the output image, if required.
 
+def getGridRange(dfArea, marginProportion=0, verbose=False) :
+    '''Look through the postcode grid reference values in the dataframe and determine a rectangle to cover them all,
+       with a margin around the edge (defaulting to no margin).
+       Returns two grid points as Eastings/Northings tuples - one for the bottom-left corner of the rectangle, the
+       other for the top-right.
+    '''
+
+    # Find the extreme easting and northing values for the data. Ignore Eastings of 0, this indicates no location info.
+    dfArea = dfArea [ dfArea['Eastings'] != 0 ]
+
+    # Get min/max of the coordinate columns. 
+    # This produces a dataframe of the format:
+    #      Eastings  Northings
+    # min     63222       8478
+    # max    655448    1213615
+    #
+    # which we can extract individual values from.
+    #
+    #(NB For reference, the Pandas syntax to get a single value from a dataframe is: minE = dfArea['Eastings'].min() )
+
+    agg = dfArea[['Eastings', 'Northings']].agg([min,max])
+
+    # Pull out the individual values
+    minE = agg.loc['min', 'Eastings']
+    maxE = agg.loc['max', 'Eastings']
+    minN = agg.loc['min', 'Northings']
+    maxN = agg.loc['max', 'Northings']
+
+    # Work out the size of the margin to add around the minimal rectangle. Use the same margin on all sides,
+    # based on the largest dimension.
+    marginSize = max( (maxE - minE), (maxN - minN) ) * marginProportion
+
+    # And now produce the final bottom-left and top-right points including the margin.
+    bottomLeft =( int(minE-marginSize), int(minN-marginSize) )
+    topRight   =( int(maxE+marginSize), int(maxN+marginSize) )
+
+    if verbose:
+        print()
+        print(f'GetGridRange:')
+        print(f'- marginProportion = {marginProportion}, marginSize =  {marginSize}')    
+        print(f'- minE = {minE}, maxE = {maxE}, minN = {minN}, maxN = {maxN}')
+        print(f'- bottomLeft = {bottomLeft}')
+        print(f'- topRight = {topRight}')
+
+    return bottomLeft, topRight
+
+
+# Get the town name associated with the postcode area, from the relevant column in the first row of the
+# filtered dataframe. Need to work on reset-index version of the dataframe (not saved) in order to be
+# able to use .loc to access the first row as index=0 - as dataframes are 'view' based, and so the 
+# index values (unique ID) comes from the underlying based dataframe, and so index=0 will not necessarily
+# be present in the view-based dataframe.
+def getPostTownOfFirstRow(df) :
+    '''Returns the post town value from the first row of the specified dataframe.'''
+    town = df.reset_index().loc[0,'Post Town']
+    return town
+
 def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
     '''Set up a plot of all postcodes in Great Britain.'''
 
@@ -419,7 +476,7 @@ def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
 
     # No filtering on the dataframe - plot all postcodes locations.
     dfArea = df
-    bottomLeft, topRight = getGridRange(dfArea, marginProportion=0.05)
+    bottomLeft, topRight = getGridRange(dfArea, marginProportion=0.1, verbose=verbose)
     title = 'Great Britain'
     img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
     
@@ -429,7 +486,69 @@ def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
 
     return 0
 
-## To here.
+def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
+    '''Set up a plot of the postcodes in the specified postcode area.'''
+
+    # Filter the dataframe to just hold postcodes in this postcode area
+    dfArea = df [ df['PostcodeArea'] == postcodeArea.upper()]
+    if dfArea.empty :
+        # Shouldn't happen
+        print(f'*** Postcode area {postcodeArea.upper()} not found in dataframe')
+        return 1
+
+    bottomLeft, topRight = getGridRange(dfArea, marginProportion=0.1, verbose=verbose)
+
+    town = getPostTownOfFirstRow(dfArea)
+    title = f'Postcode area {postcodeArea.upper()} [{town}]'
+
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    if savefilelocation != None :
+        filename = f'{savefilelocation}/postcodes.pa.{postcodeArea.lower()}.png'
+        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
+
+    return 0
+
+def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
+    '''Set up a plot of the postcodes in the specified National Grid square.'''
+
+    sq = ng.dictGridSquares[sqName.upper()]        
+    
+    if not sq.isRealSquare :
+        print(f'Square {sq.name} is not a land-based square ..')
+    
+    # The eastingIndex and northingIndex values are relative to the main 100km grid squares of the National Grid
+    # Convert these to metres to get the National Grid coordindate equivalent.
+    # Work out the National Grid coordindates of the bottom-left and top-right points of the square
+    factor = 100 * 1000
+    bottomLeft = (sq.eastingIndex * factor, sq.northingIndex * factor)
+    topRight = ((sq.eastingIndex + 1) * factor, (sq.northingIndex+1) * factor)
+
+    # Remove postcodes not in the square
+    dfArea = df
+    dfArea = dfArea [ (dfArea['Eastings']  >= bottomLeft[0]) & (dfArea['Eastings']  <= topRight[0])]
+    dfArea = dfArea [ (dfArea['Northings'] >= bottomLeft[1]) & (dfArea['Northings'] <= topRight[1])]
+
+    if verbose:
+        print()
+        print(f'plotGridSquare for sqName = "{sqName}"')
+        print(f'- {sq.getPrintGridString()}')
+        print(f'- eastingIndex = {sq.eastingIndex} : northingIndex = {sq.northingIndex} : mLength = {sq.mLength}')
+        print(f'- bottomLeft = {bottomLeft} : topRight = {topRight}')
+        print(f'- postcode count = {dfArea.shape[0]}')
+
+    if dfArea.shape[0] == 0 :
+        print()
+        print(f'No postcodes to plot in grid square {sqName}')
+        return 0
+
+    title=f'National Grid square {sqName.upper()}'
+
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    if savefilelocation != None :
+        filename = f'{savefilelocation}/postcodes.ng.{sqName.lower()}.png'
+        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
+
+    return 0
 
 def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False) :
 
@@ -453,65 +572,6 @@ def plotAround(df, title, e, n, dimension_km, plotter, verbose=False) :
     pcplot.plotSpecific(df, title=title, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
 
     # Save file option ?
-
-def getGridRange(dfArea, marginProportion) :
-
-    dfArea = dfArea [ dfArea['Eastings'] > 0 ]
-    min_e = dfArea['Eastings'].min()
-    max_e = dfArea['Eastings'].max()
-    min_n = dfArea['Northings'].min()
-    max_n = dfArea['Northings'].max()
-    print(min_e, max_e, min_n, max_n)
-
-    e_dimension = max_e - min_e
-    n_dimension = max_n - min_n
-
-    max_dimension = max(e_dimension, n_dimension)
-
-    margin=int(max_dimension * marginProportion)
-    bl=(int(min_e)-margin, int(min_n)-margin)
-    tr=(int(max_e)+margin, int(max_n)+margin)
-
-    #???? Some of above can go negative - is this the best way to apply a margin ?
-
-    return bl, tr
-
-
-def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, verbose=False) :
-    # ????
-    dfArea = df [ df['PostcodeArea'] == postcodeArea.upper()]
-    dfArea = dfArea [ dfArea['Eastings'] > 0 ]
-
-    bl, tr = getGridRange(dfArea, 0.1)
-
-    town = dfArea.iloc[0, 9]    # ???? Use column name !
-    title = f'Postcode area {postcodeArea.upper()} = {town}'
-
-    #if 1==1 : return
-
-    img = pcplot.plotSpecific(dfArea, title=title, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
-    if savefilelocation != None :
-        filename = savefilelocation + '/' + 'postcodes.' + 'pa.' + postcodeArea.lower() + '.' + plotter.lower() +'.png'
-        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
-
-def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
-    sq = ng.dictGridSquares[sqName.upper()]        
-    print(f'Sq name = {sq.name} : e = {sq.eastingIndex} : n = {sq.northingIndex} : mlength {sq.mLength}')
-    print(f'{sq.getPrintGridString()}')
-    
-    if not sq.isRealSquare :
-        print(f'Square {sq.name} is all sea ..')
-    
-    bl = (sq.eastingIndex * 100 * 1000, sq.northingIndex * 100 * 1000)
-    tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
-    print(f'bl = {bl} : tr = {tr}')
-
-    title=f'National Grid square {sqName.upper()}'
-
-    img = pcplot.plotSpecific(df, title=title, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
-    if savefilelocation != None :
-        filename = savefilelocation + '/' + 'postcodes.' + 'ng.' + sqName.lower() + '.' + plotter.lower() +'.png'
-        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
 
 #############################################################################################
 
@@ -703,7 +763,7 @@ def processCommand(parsedArgs) :
                 if iterations > 1 :
                     print()
                     print(f'Plot {i} of {iterations}')
-                status = plotPlace(df, placeType, placeValue, parsedArgs.plotter, parsedArgs.outdir)
+                status = plotPlace(df, placeType, placeValue, parsedArgs.plotter, parsedArgs.outdir, verbose=verbose)
         elif parsedArgs.cmd == 'df_info' :
             status = pcgen.displayBasicDataFrameInfo(df, verbose)
         else :

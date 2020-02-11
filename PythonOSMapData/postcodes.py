@@ -214,29 +214,42 @@ def displayPostcodeInfo(df, postcode='NG2 6AG', verbose=False) :
 #############################################################################################
 
 # Functions to handle the initial processing of the 'plot' command, to work out what 'place'
-# to plot, invoking a detailed plotting function in a separate module (which allows a choice
-# of plotting tool, 'CV2' or 'TK').
+# to plot by processing the command line arguments in more detail.
 #
 # The plot command requires a 'place' argument from the command line, which is then used
 # to work out what sort of plot to perform and on what part of the National Grid.
 #
-# The 'place' argument can take a number of different values:
+# The 'place' argument can take a number of different values as described in the help text.
 #
-# - one of several special values:
-#   - 'all' : plot for the whole of Great Britain
-#   - 'random_postcode' : plot for a postcode selected at random from the dataframe
-#   - 'random_square'   : plot for a National Grid 100x100km square selected at random
-# - a two-letter top-level National Grid square identifier XX
-#   - input format is'NG:<XX>'
-#   - or if there is no Postcode area with this value, can just use 'XX' 
-# - a one or two-letter Postcode area identier YY
-#   - input format is'Area:<YY>'
-#   - or if there is no National Grid square with this value, can just use 'YY' 
-# - if a two letter place argument can be both a National Grid Square or a Postcode
-#   area, then the command asks for more specific input format to be used
-# - a postcode - anything matching a postcode regular expression is treated as a possible postcode
-# - ???? Potentially others - countries, counties, Post districts, city/town names
-# - ???? Potentially an area specified using National Grid coordindates, beyond the top-level squares
+# Future place options to add might be counties/wards/town names ...
+
+def showPlaceArgUsage():
+    '''Prints out usage text for the 'place' command line argument.'''
+    print('Usage for the "place" argument:')
+    print('''
+    - 'pa:XX' plots postcodes for a specified postcode area XX (can be one or two letters long)
+       For example 'pa:TQ' specifies a plot for the TQ (Torquay) Postcode Area
+    - 'pc:XXXXXXX' plots the area around a specified postcode XXXXXXX (can be varous lengths and include spaces)
+       For example 'pc:NG2 6AG' (surrounded by quotes because of the space) specifies a plot around Nottingham's 
+       Trent Bridge postcode.
+    - 'ng:XX' plots postcodes for a specified OS National Grid square XX (must consist of two letters)
+       For example 'ng:TQ' specifies a plot of the TQ national grid square (roughly London and areas to its south)
+    - for all the above, part after the colon can also be set to 'random' which causes a random item of the appropriate
+      type to be used for the plot. 
+      For example 'pc:random' selects a random postcode from the full set of postcodes and plots the area around it.
+    - as well as the 'colon-based' formats above, some other forms are accepted where they are clear:
+      - 'all' plots postcodes for the whole of Great Britain
+      - 'random' chooses a random place type (pa/pc/ng) and a random item of this type to plot
+      - a single character place argument is interpretted as a postcode area
+        For example 'E'
+      - a two character place argument is interpretted as either a postcode area or National Grid square. If the
+        argument is valid for either then you need to use the colon-based form to clear up the ambiguity.
+        For example 
+        - 'DN' is interpretted as the DN postcode area (Doncaster), as there is no DN National Grid square.
+        - 'NZ' is interpretted as the NZ National Grid square, as there is no NZ postcode area
+        - 'TQ' is not processed, as it is a valid postcode area and a valid National Grid square
+      - arguments of 5 or more characters are treated as postcodes
+    ''')
 
 def extractPlaceInfoFromPlaceArgs(df, placeArg, verbose=False) :
     '''Inspect the 'place' argument from the command line.
@@ -261,6 +274,9 @@ def extractPlaceInfoFromPlaceArgs(df, placeArg, verbose=False) :
         # We need to deduce the place type
         if placeArg.lower() == 'all' :
             placeType, placeValue = 'all', 'GB'
+        elif placeArg.lower() == 'random' :
+            # Choose a random place type and value.
+            placeType, placeValue = 'random', 'random'
         elif len(placeArg) == 1 :
             # Assume it's a postcode area
             placeType, placeValue = 'pa', placeArg
@@ -299,32 +315,8 @@ def extractPlaceInfoFromPlaceArgs(df, placeArg, verbose=False) :
 
     return (placeType, placeValue)
 
-def showPlaceArgUsage():
-    '''Prints out usage text for the 'place' command line argument.'''
-    print('Usage for the "place" argument:')
-    print('''
-    - 'pa:XX' plots postcodes for a specified postcode area XX (can be one or two letters long)
-       For example 'pa:TQ' specifies a plot for the TQ (Torquay) Postcode Area
-    - 'pc:XXXXXXX' plots the area around a specified postcode XXXXXXX (can be varous lengths and include spaces)
-       For example 'pc:NG2 6AG' (surrounded by quotes because of the space) specifies a plot around Nottingham's 
-       Trent Bridge postcode.
-    - 'ng:XX' plots postcodes for a specified OS National Grid square XX (must consist of two letters)
-       For example 'ng:TQ' specifies a plot of the TQ national grid square (roughly London and areas to its south)
-    - for all the above, part after the colon can also be set to 'random' which causes a random item of the appropriate
-      type to be used for the plot. 
-      For example 'pc:random' selects a random postcode from the full set of postcodes and plots the area around it.
-    - as well as the 'colon-based' formats above, some other forms are accepted where they are clear:
-      - 'all' plots postcodes for the whole of Great Britain
-      - a single character place argument is interpretted as a postcode area
-        For example 'E'
-      - a two character place argument is interpretted as either a postcode area or National Grid square. If the
-        argument is valid for either then you need to use the colon-based form to clear up the ambiguity.
-        For example 
-        - 'DN' is interpretted as the DN postcode area (Doncaster), as there is no DN National Grid square.
-        - 'NZ' is interpretted as the NZ National Grid square, as there is no NZ postcode area
-        - 'TQ' is not processed, as it is a valid postcode area and a valid National Grid square
-      - arguments of 5 or more characters are treated as postcodes
-    ''')
+
+#############################################################################################
 
 def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbose=False) :
     '''Dispatches plotting to detailed methods for each place type, after checking that the place is known.
@@ -333,6 +325,9 @@ def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbos
     # Special value for the output directory to indicate that the output image file should not be saved.
     if imageOutDir != None and imageOutDir.lower() == 'none' :
         imageOutDir = None
+
+    if placeType.lower() == 'random' :
+        placeType, placeValue = getRandomPlaceType(['pa', 'pc', 'ng']), 'random'
 
     # If the place value specified is 'random', generate a random place value of the appropriate type.
     if placeValue.lower() == 'random' :
@@ -345,7 +340,8 @@ def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbos
         else :
             print(f'"random" option not supported for place type {placeType}')
             return 1
-        print(f'Using random value "{placeValue}" ..')
+        print()
+        print(f'Using random place "{placeType}:{placeValue}" ..')
 
     if placeType == 'all' :
         plotAllGB(df, plotter, imageOutDir, verbose)
@@ -400,36 +396,40 @@ def getRandomGridSquare(df) :
     randomIndex = random.randrange(0, len(l))
     return l[randomIndex]
 
+def getRandomPlaceType(placeTypeList) :
+    '''Return a random item from a list of place types.'''
+    randomIndex = random.randrange(0, len(placeTypeList))
+    return placeTypeList[randomIndex]
+
 # Functions to actually invoke the plotting functions, after working out:
 # - what subset of the dataframe points to plot
 # - where the extent of the plot boundary should be. The extent is specified as the bottom-left
 #   and top-right corner points of a rectangle, identified by National Grid Eastings,Northings
-#   coorindates
+#   coordinates
 # - a title for the displayed plot
 # - what filename to use for saving the output image, if required.
 
 def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
     '''Set up a plot of all postcodes in Great Britain.'''
+
     if plotter == 'TK' :
         print()
         print(f'*** Plot of all GB using TK plotter not attempted - can be very slow. Try the CV2 plotter.')
         return 1
 
-    # Set the rectangular area to plot to cover the whole of the National Grid area.
-    # Set the height (in pixels) of the canvas we're going to plot on. (Width is calculated).
-    bottomLeft = (0,0)
-    topRight = (700000,1250000)
-
-    bottomLeft, topRight = getGridRange(df, 0.05)
-
-    img = pcplot.plotSpecific(df, title='All GB', canvasHeight=800, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    # No filtering on the dataframe - plot all postcodes locations.
+    dfArea = df
+    bottomLeft, topRight = getGridRange(dfArea, marginProportion=0.05)
+    title = 'Great Britain'
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
     
     # Save the image in a file.
     if savefilelocation != None :
-        filename = f'{savefilelocation}/postcodes.allGB.png'
-        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
+        pcplot.writeImageArrayToFile(f'{savefilelocation}/postcodes.allGB.png', img, plotter=plotter)
 
     return 0
+
+## To here.
 
 def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False) :
 
@@ -440,7 +440,8 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
         print(f'*** Postcode not found in dataframe : {postcode}')
         return 1
     else :
-        plotAround(df, postcode, founddf['Eastings'], founddf['Northings'], 10, plotter)
+        title=f'Around postcode {formattedPostcode}'
+        plotAround(df, title=title, e=founddf['Eastings'], n=founddf['Northings'], dimension_km=10, plotter=plotter)
         return 0
 
 def plotAround(df, title, e, n, dimension_km, plotter, verbose=False) :
@@ -484,7 +485,7 @@ def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, ver
     bl, tr = getGridRange(dfArea, 0.1)
 
     town = dfArea.iloc[0, 9]    # ???? Use column name !
-    title = postcodeArea.upper() + ' = ' + town
+    title = f'Postcode area {postcodeArea.upper()} = {town}'
 
     #if 1==1 : return
 
@@ -505,7 +506,9 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
     tr = ((sq.eastingIndex + 1) * 100 * 1000, (sq.northingIndex+1) * 100 * 1000)
     print(f'bl = {bl} : tr = {tr}')
 
-    img = pcplot.plotSpecific(df, title=sqName, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
+    title=f'National Grid square {sqName.upper()}'
+
+    img = pcplot.plotSpecific(df, title=title, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
     if savefilelocation != None :
         filename = savefilelocation + '/' + 'postcodes.' + 'ng.' + sqName.lower() + '.' + plotter.lower() +'.png'
         pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
@@ -605,10 +608,12 @@ def defineAllowedArguments() :
     subparser.set_defaults(cmd='info')
     addStandardArgumentOptions(subparser)
 
-    subparser = subparsers.add_parser('plot', help='Plot a map around the specified postcode')
+    subparser = subparsers.add_parser('plot', help='Plot a map around the specified postcode.')
     addPlotterArgumentOption(subparser)
     subparser.add_argument('-o', '--outdir', default=defaultImageOutDir, 
                         help='Specify the directory location for the image file, or set to "none" to suppress file production')
+    subparser.add_argument('-i', '--iterations', type=int, choices=range(1, 11), default=1,
+                            help='Number of plots to perform - only applies to "random" plots')
     addStandardArgumentOptions(subparser)
     subparser.add_argument('place', help='Identifies the area to be plotted, in quotes if it contains any spaces')
     subparser.set_defaults(cmd='plot')
@@ -687,7 +692,18 @@ def processCommand(parsedArgs) :
             if placeType == '' :
                 # Invalid place argumnent (details have already been reported).
                 status = 1
-            status = plotPlace(df, placeType, placeValue, parsedArgs.plotter, parsedArgs.outdir)
+            # For the 'random' option, we all a 'number' argument to allow multiple succesive random plots to be shown.
+            
+            iterations = parsedArgs.iterations
+            if placeValue.lower() != 'random' and iterations != 1 :
+                print(f'(Ignoring "iterations" argument for non-random place value)')
+                iterations = 1
+
+            for i in range(1, iterations+1) :
+                if iterations > 1 :
+                    print()
+                    print(f'Plot {i} of {iterations}')
+                status = plotPlace(df, placeType, placeValue, parsedArgs.plotter, parsedArgs.outdir)
         elif parsedArgs.cmd == 'df_info' :
             status = pcgen.displayBasicDataFrameInfo(df, verbose)
         else :
@@ -701,6 +717,7 @@ def main() :
     Returns 0 if command was successful, 1 if not.'''
     # Use the Python argparse command-line options parser to 
     # https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args
+    # https://docs.python.org/3/library/argparse.html
 
     # Set up the command line parser, and then invoke it against the command line provided (sys.argv). 
     parser = defineAllowedArguments()

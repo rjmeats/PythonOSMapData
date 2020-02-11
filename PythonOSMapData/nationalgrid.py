@@ -37,11 +37,20 @@ class GridSquare :
         # just one filling out the overall grid, not containing any GB land.
         self.isRealSquare = False
 
+        # Description of the location covered by the square e.g. 'South Devon'
+        self.label = '????'
+
     def setRealSquare(self, isRealSquare=True) :
         self.isRealSquare = isRealSquare
 
     def getName(self) :
         return self.name
+
+    def setLabel(self, label) :
+        self.label = label
+
+    def getLabel(self) :
+        return self.label
 
     # For diagnostic printing out
     def getPrintGridString(self) :
@@ -100,6 +109,69 @@ def generateGridSquares():
     
     return a, d
 
+# Descriptive labels for squares
+gridAreaNameDict = {
+    'SV' : 'Isles of Scilly',
+    'SW' : 'Cornwall',
+    'SX' : 'South Devon',
+    'SY' : 'Dorset Coast',
+    'SZ' : 'Isle of Wight',
+    'TV' : 'Beachy Head',
+    'SR' : 'South-west Pembrokeshire',
+    'SS' : 'North Devon and Swansea',
+    'ST' : 'Bristol Channel',
+    'SU' : 'Hampshire and Wiltshire',
+    'TQ' : 'London, Surrey and Sussex',
+    'TR' : 'Kent',
+    'SM' : 'West Pembroke',
+    'SN' : 'West Wales',
+    'SO' : 'West Midlands, Welsh borders, Gloucester',
+    'SP' : 'Birmingham, Oxfordshire and Warwickshire',
+    'TL' : 'Hertfordshire and Cambridgeshire',
+    'TM' : 'Essex and Suffolk',
+    'SH' : 'Anglesey and Snowdonia',
+    'SJ' : 'North-east Wales, Cheshire, Liverpool',
+    'SK' : 'East Midlands',
+    'TF' : 'The Wash',
+    'TG' : 'Norfolk',
+    'SC' : 'Isle of Man',
+    'SD' : 'Lancashire',
+    'SE' : 'Leeds, Bradford and York',
+    'TA' : 'Humber Estuary and East Yorkshire coast',
+    'NW' : 'Western edge of Galloway, south-west Scotland',
+    'NX' : 'Galloway, south-west Scotland',
+    'NY' : 'Cumbria, North Yorkshire and Borders',
+    'NZ' : 'Newcastle and Durham',
+    'OV' : 'East Yorkshire coast (miniscule)',
+    'NR' : 'Islay, Jura, Kintyre',
+    'NS' : 'Glasgow and Ayrshire',
+    'NT' : 'Edinburgh and Borders',
+    'NU' : 'Northumberland Coast',
+    'NL' : 'Tiree and Barra (south west Hebrides)',
+    'NM' : 'Mull, Oban and Mallaig',
+    'NN' : 'Fort William, Pittlochry and Crieff',
+    'NO' : 'Perth and Dundee',
+    'NF' : 'North and South Uist, Outer Hebrides',
+    'NG' : 'Skye and Wester Ross',
+    'NH' : 'Inverness',
+    'NJ' : 'Elgin and Aberdeen',
+    'NK' : 'Peterhead, northeast of Aberdeen',
+    'NA' : 'Western edge of Lewis, Outer Hebrides',
+    'NB' : 'Lewis, Outer Hebrides',
+    'NC' : 'Cape Wrath and northern Scotland',
+    'ND' : 'Thurso and Wick, north-east Scotland',
+    #'N[ABCD' : ''
+    'HW' : 'North Rona, north-west of Cape Wrath',
+    'HX' : 'Sule Skerry and Stack Skerry, west of Orkney',
+    'HY' : 'Orkney',
+    'HZ' : 'Fair Isle, between Shetland and Orkney',
+    'HT' : 'Foula, westernmost of the Shetland Islands',
+    'HU' : 'Shetland',
+    'HP' : 'Unst, northernmost of the Shetland Islands',
+    
+    # incomplete
+}
+
 # Determine whether a grid square is a 'real' square, containing GB land of some sort, or just an excess square around the edge, present
 # only to produce an overall rectangular grid. The excess squares can be all-sea or contain only non-GB land.
 # Assignments based on visual inspection of file:///C:/Users/owner/Documents/Development/PythonOSMapData/OSDocs/guide-to-nationalgrid.pdf
@@ -125,10 +197,13 @@ def assignGridInfo(arrayGrid, dictGrid) :
             if lettersList[0] == "-" :
                 # An artificial square, mark it
                 sq.setRealSquare(C not in lettersList)
+                if C not in lettersList :
+                    sq.setLabel(gridAreaNameDict.get(sq.getName(), '????'))
             elif lettersList[0] == "+" :
                 # A real squares
                 sq.setRealSquare(C in lettersList)
-
+                if C in lettersList :
+                    sq.setLabel(gridAreaNameDict.get(sq.getName(), '????'))
 
 # End of initialisation
 

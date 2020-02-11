@@ -455,6 +455,15 @@ def getGridRange(dfArea, marginProportion=0, verbose=False) :
 
     return bottomLeft, topRight
 
+def restrictToGridRectangle(df, bottomLeft, topRight) :
+    '''Filters the dataframe so that only postcodes with coordindates within the specified rectangle
+       of coordindates defined by the bottomLeft and topRight eastings/northing points are retained. 
+       Returns the filtered dataframe.
+    '''
+    dfArea = df
+    dfArea = dfArea [ (dfArea['Eastings']  >= bottomLeft[0]) & (dfArea['Eastings']  <= topRight[0])]
+    dfArea = dfArea [ (dfArea['Northings'] >= bottomLeft[1]) & (dfArea['Northings'] <= topRight[1])]
+    return dfArea
 
 # Get the town name associated with the postcode area, from the relevant column in the first row of the
 # filtered dataframe. Need to work on reset-index version of the dataframe (not saved) in order to be
@@ -514,7 +523,7 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
     sq = ng.dictGridSquares[sqName.upper()]        
     
     if not sq.isRealSquare :
-        print(f'Square {sq.name} is not a land-based square ..')
+        print(f'Grid square {sq.name} is not a land-based square ..')
     
     # The eastingIndex and northingIndex values are relative to the main 100km grid squares of the National Grid
     # Convert these to metres to get the National Grid coordindate equivalent.
@@ -523,15 +532,17 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
     bottomLeft = (sq.eastingIndex * factor, sq.northingIndex * factor)
     topRight = ((sq.eastingIndex + 1) * factor, (sq.northingIndex+1) * factor)
 
-    # Remove postcodes not in the square
-    dfArea = df
-    dfArea = dfArea [ (dfArea['Eastings']  >= bottomLeft[0]) & (dfArea['Eastings']  <= topRight[0])]
-    dfArea = dfArea [ (dfArea['Northings'] >= bottomLeft[1]) & (dfArea['Northings'] <= topRight[1])]
+    # Remove postcodes not located in the square
+    dfArea = restrictToGridRectangle(df, bottomLeft, topRight)
+    #dfArea = df
+    #dfArea = dfArea [ (dfArea['Eastings']  >= bottomLeft[0]) & (dfArea['Eastings']  <= topRight[0])]
+    #dfArea = dfArea [ (dfArea['Northings'] >= bottomLeft[1]) & (dfArea['Northings'] <= topRight[1])]
 
     if verbose:
         print()
         print(f'plotGridSquare for sqName = "{sqName}"')
         print(f'- {sq.getPrintGridString()}')
+        print(f'- {sq.getLabel()}')
         print(f'- eastingIndex = {sq.eastingIndex} : northingIndex = {sq.northingIndex} : mLength = {sq.mLength}')
         print(f'- bottomLeft = {bottomLeft} : topRight = {topRight}')
         print(f'- postcode count = {dfArea.shape[0]}')
@@ -541,7 +552,12 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
         print(f'No postcodes to plot in grid square {sqName}')
         return 0
 
-    title=f'National Grid square {sqName.upper()}'
+    label = sq.getLabel()
+    if label == '????' :
+        title=f'National Grid square {sqName.upper()}'
+        print(f'* Info: no label for National Grid square {sqName.upper()}')
+    else :
+        title=f'National Grid square {sqName.upper()} [{sq.getLabel()}]'
 
     img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
     if savefilelocation != None :
@@ -549,6 +565,8 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
         pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
 
     return 0
+
+## to here.
 
 def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False) :
 

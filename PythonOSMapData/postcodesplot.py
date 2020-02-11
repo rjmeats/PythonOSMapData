@@ -245,6 +245,8 @@ def cv2plotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight
                 pass
                 imgLookupIndex[ns+i, es+j] = index
 
+    # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too
+    # early ? Especially noticeable for National Grid squares ought to br 100 x 100, but end up showing as larger.
     cvtitle = 'Title' if title == None else title
     v_km = (topRight[0] - bottomLeft[0]) // 1000
     h_km = (topRight[1] - bottomLeft[1]) // 1000

@@ -534,9 +534,6 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
 
     # Remove postcodes not located in the square
     dfArea = restrictToGridRectangle(df, bottomLeft, topRight)
-    #dfArea = df
-    #dfArea = dfArea [ (dfArea['Eastings']  >= bottomLeft[0]) & (dfArea['Eastings']  <= topRight[0])]
-    #dfArea = dfArea [ (dfArea['Northings'] >= bottomLeft[1]) & (dfArea['Northings'] <= topRight[1])]
 
     if verbose:
         print()
@@ -552,12 +549,12 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
         print(f'No postcodes to plot in grid square {sqName}')
         return 0
 
-    label = sq.getLabel()
-    if label == '????' :
-        title=f'National Grid square {sqName.upper()}'
-        print(f'* Info: no label for National Grid square {sqName.upper()}')
-    else :
-        title=f'National Grid square {sqName.upper()} [{sq.getLabel()}]'
+    # Now add a margin around the area.
+    margin = 5 * 1000
+    bottomLeft = (bottomLeft[0]-margin, bottomLeft[1]-margin)
+    topRight =   (topRight[0]+margin,   topRight[1]+margin)
+    
+    title=f'National Grid square {sqName.upper()} [{sq.getLabel()}]'
 
     img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
     if savefilelocation != None :
@@ -568,28 +565,95 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
 
 ## to here.
 
+def getLocationDesc(dfpc, verbose=False) :
+    '''Extract fields from a dataframe containing a record for a single postcode to try and briefly describe its location.'''
+    ward = dfpc.reset_index().loc[0,'Ward Name']
+    district = dfpc.reset_index().loc[0,'District Name']
+    county = dfpc.reset_index().loc[0,'County Name']
+    country = dfpc.reset_index().loc[0,'Country Name']
+
+    if pd.isnull(ward):     ward = ''
+    if pd.isnull(district): district = ''
+    if pd.isnull(county):   county = ''
+    if pd.isnull(country):  country = ''
+
+    ward = ward.replace(' Ward', '')
+    ward = ward.replace(' ED', '')
+    district = district.replace(' (B)', '')
+    district = district.replace(' District', '')
+    district = district.replace(' London Borough', ', London')
+
+    desc = ''
+    if ward != '' :
+        desc = ward
+    if district != '' :
+        desc = f'{desc}, {district}'
+    if county != '' :
+        desc = f'{desc}, {county}'
+
+    # Why do we need to do the above syntax ????
+    #
+    # ward = dfpc['Ward Name']  - produces a dtype object, not useful
+    # e  = dfpc['Eastings'] - produces a dtype int64, can use in calculations (e.g. see below) - but is that luck
+
+    if verbose:
+        print()
+        print(dfpc)
+        print()
+        print(f'ward = [{ward}], district = [{district}], county = [{county}], country = [{country}]')
+        print()
+        print(f'desc = [{desc}]')
+
+    return desc
+
 def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False) :
+    '''Set up a plot of the postcodes within a square centred on a specific postcode.'''
 
     formattedPostcode = normalisePostcodeFormat(postcode)
-
-    founddf = df [df['Postcode'] == formattedPostcode]
-    if founddf.empty :
-        print(f'*** Postcode not found in dataframe : {postcode}')
+    dfpc = df [df['Postcode'] == formattedPostcode]
+    if dfpc.empty :
+        print(f'*** Postcode to plot {postcode} not found in dataframe')
         return 1
-    else :
-        title=f'Around postcode {formattedPostcode}'
-        plotAround(df, title=title, e=founddf['Eastings'], n=founddf['Northings'], dimension_km=10, plotter=plotter)
-        return 0
+    elif dfpc.shape[0] != 1 :
+        print(f'*** Unexpected dataframe size plotting Postcode {postcode} : {dfpc.shape[0]} instead of 1')
+        return 1
 
-def plotAround(df, title, e, n, dimension_km, plotter, verbose=False) :
-    dimension_m = dimension_km * 1000       # m
-    bl = (int(e-dimension_m/2), int(n-dimension_m/2))
-    tr = (int(e+dimension_m/2), int(n+dimension_m/2))
-    print(f'bl = {bl} : tr = {tr}')
+    # Get the coordindates of this postcode
+    pcEasting  = dfpc['Eastings']   # ????
+    pcNorthing = dfpc['Northings']  # ????
 
-    pcplot.plotSpecific(df, title=title, canvasHeight=800, bottomLeft=bl, topRight=tr, plotter=plotter)
+    # Calculate the NationalGrid coordindates of a square centred on our postcode of interest
+    sqDimensions = 10 * 1000    # Metres
+    bottomLeft = (int(pcEasting-sqDimensions/2), int(pcNorthing-sqDimensions/2))
+    topRight =   (int(pcEasting+sqDimensions/2), int(pcNorthing+sqDimensions/2))
 
-    # Save file option ?
+    # Remove postcodes not located in the square
+    dfArea = restrictToGridRectangle(df, bottomLeft, topRight)
+    locationDesc = getLocationDesc(dfpc, verbose)
+
+    # Put a space in the formatted code if not present, before the 'inward' part.
+    displayablePostcode = formattedPostcode.upper()
+    if not ' ' in displayablePostcode:
+        displayablePostcode = f'{displayablePostcode[0:-3]} {displayablePostcode[-3:]}'
+
+    title=f'Around postcode {displayablePostcode} [{locationDesc}]'
+
+    # No margin added.
+
+    if verbose:
+        print()
+        print(f'plotPostCode for postcode = "{formattedPostcode}"')
+        print(f'- pcEasting = {pcEasting} : pcNorthing = {pcNorthing} : sqDimensions = {sqDimensions}')
+        print(f'- bottomLeft = {bottomLeft} : topRight = {topRight}')
+        print(f'- postcode count = {dfArea.shape[0]}')
+
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+
+    if savefilelocation != None :
+        filename = f'{savefilelocation}/postcodes.pc.{formattedPostcode.replace(" ", "").lower()}.png'
+        pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
+
+    return 0
 
 #############################################################################################
 
@@ -690,7 +754,7 @@ def defineAllowedArguments() :
     addPlotterArgumentOption(subparser)
     subparser.add_argument('-o', '--outdir', default=defaultImageOutDir, 
                         help='Specify the directory location for the image file, or set to "none" to suppress file production')
-    subparser.add_argument('-i', '--iterations', type=int, choices=range(1, 11), default=1,
+    subparser.add_argument('-i', '--iterations', type=int, choices=range(1, 101), default=1,
                             help='Number of plots to perform - only applies to "random" plots')
     addStandardArgumentOptions(subparser)
     subparser.add_argument('place', help='Identifies the area to be plotted, in quotes if it contains any spaces')

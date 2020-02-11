@@ -95,7 +95,7 @@ def onObjectClick(event):
     print(f'obj={objID} : pc={pc}')
     print(pcinfo)
 
-def tkplotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+def tkplotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
@@ -204,7 +204,7 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-def cv2plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+def cv2plotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)

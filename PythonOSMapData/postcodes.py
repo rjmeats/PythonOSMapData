@@ -279,7 +279,7 @@ def extractPlaceInfoFromPlaceArgs(df, placeArg, verbose=False) :
                 return failureIndicator
             else :
                 print()
-                print(f'"{placeArg}" is not recognised as a Postcode Area or a National Grid square.')
+                print(f'"place" argument "{placeArg}" is not recognised as a Postcode Area or a National Grid square.')
                 return failureIndicator
         elif len(placeArg) >= 5 :
             # Assume it's a postcode
@@ -289,7 +289,7 @@ def extractPlaceInfoFromPlaceArgs(df, placeArg, verbose=False) :
 
     if badArgument :
         print()
-        print(f'"place" argument {placeArg} is not recognised.')
+        print(f'"place" argument "{placeArg}" is not recognised.')
         print()
         showPlaceArgUsage()
         return failureIndicator
@@ -302,7 +302,29 @@ def extractPlaceInfoFromPlaceArgs(df, placeArg, verbose=False) :
 def showPlaceArgUsage():
     '''Prints out usage text for the 'place' command line argument.'''
     print('Usage for the "place" argument:')
-    # ????
+    print('''
+    - 'pa:XX' plots postcodes for a specified postcode area XX (can be one or two letters long)
+       For example 'pa:TQ' specifies a plot for the TQ (Torquay) Postcode Area
+    - 'pc:XXXXXXX' plots the area around a specified postcode XXXXXXX (can be varous lengths and include spaces)
+       For example 'pc:NG2 6AG' (surrounded by quotes because of the space) specifies a plot around Nottingham's 
+       Trent Bridge postcode.
+    - 'ng:XX' plots postcodes for a specified OS National Grid square XX (must consist of two letters)
+       For example 'ng:TQ' specifies a plot of the TQ national grid square (roughly London and areas to its south)
+    - for all the above, part after the colon can also be set to 'random' which causes a random item of the appropriate
+      type to be used for the plot. 
+      For example 'pc:random' selects a random postcode from the full set of postcodes and plots the area around it.
+    - as well as the 'colon-based' formats above, some other forms are accepted where they are clear:
+      - 'all' plots postcodes for the whole of Great Britain
+      - a single character place argument is interpretted as a postcode area
+        For example 'E'
+      - a two character place argument is interpretted as either a postcode area or National Grid square. If the
+        argument is valid for either then you need to use the colon-based form to clear up the ambiguity.
+        For example 
+        - 'DN' is interpretted as the DN postcode area (Doncaster), as there is no DN National Grid square.
+        - 'NZ' is interpretted as the NZ National Grid square, as there is no NZ postcode area
+        - 'TQ' is not processed, as it is a valid postcode area and a valid National Grid square
+      - arguments of 5 or more characters are treated as postcodes
+    ''')
 
 def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbose=False) :
     '''Dispatches plotting to detailed methods for each place type, after checking that the place is known.
@@ -312,7 +334,7 @@ def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbos
     if imageOutDir != None and imageOutDir.lower() == 'none' :
         imageOutDir = None
 
-    # If the place value is 'random', generate an appropriate value to use.
+    # If the place value specified is 'random', generate a random place value of the appropriate type.
     if placeValue.lower() == 'random' :
         if placeType == 'pa' :
             placeValue = getRandomPostcodeArea(df)
@@ -321,7 +343,7 @@ def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbos
         elif placeType == 'ng' :
             placeValue = getRandomGridSquare(df)
         else :
-            print(f'Random option not supported for place type {placeType}')
+            print(f'"random" option not supported for place type {placeType}')
             return 1
         print(f'Using random value "{placeValue}" ..')
 
@@ -353,15 +375,11 @@ def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbos
 
 def checkPostcodeAreaExists(df, code) :
     '''Does this Postcode Area exist in the dataframe ?'''
-    dfCheck = df [ df['PostcodeArea'] == code.strip().upper() ]
-    return dfCheck.shape[0] > 0
+    return code.strip().upper() in df['PostcodeArea'].values
 
 def checkPostcodeExists(df, code) :
     '''Does this Postcode exist in the dataframe ?'''
-    normalisedCode = normalisePostcodeFormat(code)
-    dfCheck = df [ df['Postcode'] == normalisedCode.strip().upper() ]
-    print(dfCheck[0:1].transpose(copy=True))
-    return dfCheck.shape[0] > 0
+    return normalisePostcodeFormat(code) in df['Postcode'].values
 
 def getRandomCodeFromDataframe(df, columnName) :
     '''Return a random value from the specified column of the dataframe.'''
@@ -370,7 +388,7 @@ def getRandomCodeFromDataframe(df, columnName) :
 
 def getRandomPostcode(df) :
     '''Return a random Postcode value from the dataframe.'''
-    return getRandomCodeFromDataframe(df, 'Postcode')
+    return normalisePostcodeFormat(getRandomCodeFromDataframe(df, 'Postcode'))
 
 def getRandomPostcodeArea(df) :
     '''Return a random Postcode Area value from the dataframe.'''
@@ -382,23 +400,33 @@ def getRandomGridSquare(df) :
     randomIndex = random.randrange(0, len(l))
     return l[randomIndex]
 
-# Functions to actually invoke the plotting functions. 
+# Functions to actually invoke the plotting functions, after working out:
+# - what subset of the dataframe points to plot
+# - where the extent of the plot boundary should be. The extent is specified as the bottom-left
+#   and top-right corner points of a rectangle, identified by National Grid Eastings,Northings
+#   coorindates
+# - a title for the displayed plot
+# - what filename to use for saving the output image, if required.
 
 def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
+    '''Set up a plot of all postcodes in Great Britain.'''
     if plotter == 'TK' :
         print()
         print(f'*** Plot of all GB using TK plotter not attempted - can be very slow. Try the CV2 plotter.')
         return 1
 
-    # Set the rectangular area to plot to cover the whole of the National Grid area (as E,N coorinates).
+    # Set the rectangular area to plot to cover the whole of the National Grid area.
     # Set the height (in pixels) of the canvas we're going to plot on. (Width is calculated).
-    bottomLeft = 0,0
-    topRight = 700000,1250000
-    img = pcplot.plotSpecific(df, title='All GB', 
-                    canvasHeight=800, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    bottomLeft = (0,0)
+    topRight = (700000,1250000)
+
+    bottomLeft, topRight = getGridRange(df, 0.05)
+
+    img = pcplot.plotSpecific(df, title='All GB', canvasHeight=800, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    
     # Save the image in a file.
     if savefilelocation != None :
-        filename = savefilelocation + '/' + 'postcodes.allGB.png'
+        filename = f'{savefilelocation}/postcodes.allGB.png'
         pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
 
     return 0
@@ -425,30 +453,13 @@ def plotAround(df, title, e, n, dimension_km, plotter, verbose=False) :
 
     # Save file option ?
 
-def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, verbose=False) :
-    # ????
-    dfArea = df [ df['PostcodeArea'] == postcodeArea.upper()]
+def getGridRange(dfArea, marginProportion) :
+
     dfArea = dfArea [ dfArea['Eastings'] > 0 ]
-
-    town = dfArea.iloc[0, 9]    # ???? Use column name !
-    title = postcodeArea.upper() + ' = ' + town
-
-    bl=(10,10)
-    tr=(700000,700000)
-
-    # Work out plot area from max and mins
-    dfG = dfArea[ ['PostcodeArea', 'Eastings', 'Northings'] ].groupby('PostcodeArea').agg(
-                Min_E = ('Eastings', 'min'),
-                Max_E = ('Eastings', 'max'),
-                Min_N = ('Northings', 'min'),
-                Max_N = ('Northings', 'max')
-                    )
-
-    print(dfG)
-    min_e = dfG.iloc[0,0]
-    max_e = dfG.iloc[0,1]
-    min_n = dfG.iloc[0,2]
-    max_n = dfG.iloc[0,3]
+    min_e = dfArea['Eastings'].min()
+    max_e = dfArea['Eastings'].max()
+    min_n = dfArea['Northings'].min()
+    max_n = dfArea['Northings'].max()
     print(min_e, max_e, min_n, max_n)
 
     e_dimension = max_e - min_e
@@ -456,9 +467,24 @@ def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, ver
 
     max_dimension = max(e_dimension, n_dimension)
 
-    margin=int(max_dimension / 10)
+    margin=int(max_dimension * marginProportion)
     bl=(int(min_e)-margin, int(min_n)-margin)
     tr=(int(max_e)+margin, int(max_n)+margin)
+
+    #???? Some of above can go negative - is this the best way to apply a margin ?
+
+    return bl, tr
+
+
+def plotPostcodeArea(df, postcodeArea, plotter='CV2', savefilelocation=None, verbose=False) :
+    # ????
+    dfArea = df [ df['PostcodeArea'] == postcodeArea.upper()]
+    dfArea = dfArea [ dfArea['Eastings'] > 0 ]
+
+    bl, tr = getGridRange(dfArea, 0.1)
+
+    town = dfArea.iloc[0, 9]    # ???? Use column name !
+    title = postcodeArea.upper() + ' = ' + town
 
     #if 1==1 : return
 

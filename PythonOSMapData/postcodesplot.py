@@ -95,7 +95,7 @@ def onObjectClick(event):
     print(f'obj={objID} : pc={pc}')
     print(pcinfo)
 
-def tkplotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+def tkplotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
@@ -109,6 +109,7 @@ def tkplotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=
     # https://effbot.org/tkinterbook/canvas.htm
     master = Tk()
     w = Canvas(master, width=canvas_width, height=canvasHeight)
+    master.title(title)
     w.pack()
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
@@ -204,7 +205,7 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-def cv2plotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
@@ -245,27 +246,33 @@ def cv2plotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight
                 pass
                 imgLookupIndex[ns+i, es+j] = index
 
-    # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too
-    # early ? Especially noticeable for National Grid squares ought to br 100 x 100, but end up showing as larger.
-    cvtitle = 'Title' if title == None else title
-    v_km = (topRight[0] - bottomLeft[0]) // 1000
-    h_km = (topRight[1] - bottomLeft[1]) // 1000
-    dimensions = f'{v_km} km x {h_km} km'
-    cvtitle = f'{cvtitle} : {dimensions}'
+    #cvtitle = 'Title' if title == None else title
+    #v_km = (topRight[0] - bottomLeft[0]) // 1000
+    #h_km = (topRight[1] - bottomLeft[1]) // 1000
+    #dimensions = f'{v_km} km x {h_km} km'
+    #cvtitle = f'{cvtitle} : {dimensions}'
     # For CV2 we need to reverse the colour ordering of the array to BGR
-    cv2.imshow(cvtitle, convertToBGR(img))
-    cv2.setMouseCallback(cvtitle, CV2ClickEvent)
+    cv2.imshow(title, convertToBGR(img))
+    cv2.setMouseCallback(title, CV2ClickEvent)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
     return img
 
 def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=1, plotter='CV2') :
+
+    # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too
+    # early ? Especially noticeable for National Grid squares ought to br 100 x 100, but end up showing as larger.
+    v_km = (topRight[0] - bottomLeft[0]) // 1000
+    h_km = (topRight[1] - bottomLeft[1]) // 1000
+    dimensions = f'{v_km} km x {h_km} km'
+    fullTitle = dimensions if title == None else f'{title} : {dimensions}'
+
     img = None
     if plotter.upper() == 'CV2' :
-        img = cv2plotSpecific(df, title=title, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
+        img = cv2plotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
     elif plotter.upper() == 'TK' :
-        tkplotSpecific(df, title=title, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
+        tkplotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
     else :
         print(f'*** Unknown plotter specified: {plotter}')
 
@@ -290,4 +297,5 @@ def writeImageArrayToFileUsingCV2(filename, img) :
         print(f'*** Failed to save image file as: {filename}')
 
 def writeImageArrayToFileUsingTK(filename, img) :
-    print(f'*** Saving TK plots to file not implemented - use CV2 plotter')
+    print()
+    print(f'*** TK plotter save-to-file not implemented - use the CV2 plotter instead.')

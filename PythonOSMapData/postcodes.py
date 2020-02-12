@@ -754,7 +754,7 @@ def defineAllowedArguments() :
     addPlotterArgumentOption(subparser)
     subparser.add_argument('-o', '--outdir', default=defaultImageOutDir, 
                         help='Specify the directory location for the image file, or set to "none" to suppress file production')
-    subparser.add_argument('-i', '--iterations', type=int, choices=range(1, 101), default=1,
+    subparser.add_argument('-i', '--iterations', type=int, choices=range(1, 11), default=1,
                             help='Number of plots to perform - only applies to "random" plots')
     addStandardArgumentOptions(subparser)
     subparser.add_argument('place', help='Identifies the area to be plotted, in quotes if it contains any spaces')

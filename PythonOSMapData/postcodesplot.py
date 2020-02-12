@@ -4,7 +4,7 @@ from cv2 import cv2
 from tkinter import Tk, Canvas, mainloop
 
 pcDefaultColour = "black"
-pcDefaultColourRGB = "(0,0,0)"
+pcDefaultColourRGB = (128,128,128)
 
 def assignAreasToColourGroups(df, verbose=False) :
     # Determine extent of each Postcode Area
@@ -95,7 +95,7 @@ def onObjectClick(event):
     print(f'obj={objID} : pc={pc}')
     print(pcinfo)
 
-def tkplotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+def tkplotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100, keyPostcode=None) :
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
@@ -205,7 +205,7 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100, keyPostcode=None) :
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
     areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
@@ -235,10 +235,17 @@ def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(
         #                          x
         # cv2.circle(img, center=(es, canvasHeight-ns), radius=0, color=colour, thickness=-1)
 
-        x = 2   # Seems to work well
+        if keyPostcode != None and pc == keyPostcode :
+            # Show a specific postcode more prominently. How best to do this ? Size, colour, impact on other close items,
+            # clickability ? Transparency example at https://gist.github.com/IAmSuyogJadhav/305bfd9a0605a4c096383408bee7fd5c
+            x = 10
+            cv2.circle(img, center=(es, canvasHeight-ns), radius=x, color=pcDefaultColourRGB, thickness=-1)
+        else :
+            x = 2   # Seems to work well
+            cv2.rectangle(img, pt1=(es, canvasHeight-ns), pt2=(es+x, canvasHeight-ns+x), color=colour, thickness=-1)
         #if index % (1000/density) == 0 :
         #    print('...', (es, canvasHeight-ns), ' : ', (es+x, canvasHeight-ns+x))
-        cv2.rectangle(img, pt1=(es, canvasHeight-ns), pt2=(es+x, canvasHeight-ns+x), color=colour, thickness=-1)
+
         # Record item against a small 3x3 square of points, not just the central one. Why is this necessary,
         # how does it relate to the radius value ? What about close postcodes overwriting each other ?
         for i in [-1,0,1] :
@@ -259,7 +266,7 @@ def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(
 
     return img
 
-def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=1, plotter='CV2') :
+def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=1, keyPostcode=None, plotter='CV2') :
 
     # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too
     # early ? Especially noticeable for National Grid squares ought to br 100 x 100, but end up showing as larger.
@@ -270,9 +277,9 @@ def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(
 
     img = None
     if plotter.upper() == 'CV2' :
-        img = cv2plotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
+        img = cv2plotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=keyPostcode)
     elif plotter.upper() == 'TK' :
-        tkplotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight)
+        tkplotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=keyPostcode)
     else :
         print(f'*** Unknown plotter specified: {plotter}')
 

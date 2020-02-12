@@ -647,7 +647,7 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
         print(f'- bottomLeft = {bottomLeft} : topRight = {topRight}')
         print(f'- postcode count = {dfArea.shape[0]}')
 
-    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=formattedPostcode, plotter=plotter)
 
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.pc.{formattedPostcode.replace(" ", "").lower()}.png'

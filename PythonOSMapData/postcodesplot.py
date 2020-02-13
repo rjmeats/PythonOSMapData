@@ -223,6 +223,11 @@ def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(
 
     #print(dfSlice.dtypes)
     
+    foundKey = False
+    esKey = -1
+    nsKey = -1
+    areaKey = ''
+
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
         if index % (100000/density) == 0 :
@@ -236,13 +241,13 @@ def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(
         # cv2.circle(img, center=(es, canvasHeight-ns), radius=0, color=colour, thickness=-1)
 
         if keyPostcode != None and pc == keyPostcode :
-            # Show a specific postcode more prominently. How best to do this ? Size, colour, impact on other close items,
-            # clickability ? Transparency example at https://gist.github.com/IAmSuyogJadhav/305bfd9a0605a4c096383408bee7fd5c
-            x = 10
-            cv2.circle(img, center=(es, canvasHeight-ns), radius=x, color=pcDefaultColourRGB, thickness=-1)
-        else :
-            x = 2   # Seems to work well
-            cv2.rectangle(img, pt1=(es, canvasHeight-ns), pt2=(es+x, canvasHeight-ns+x), color=colour, thickness=-1)
+            esKey = es
+            nsKey = ns
+            areaKey = area
+            foundKey = True
+
+        x = 2   # Seems to work well
+        cv2.rectangle(img, pt1=(es, canvasHeight-ns), pt2=(es+x, canvasHeight-ns+x), color=colour, thickness=-1)
         #if index % (1000/density) == 0 :
         #    print('...', (es, canvasHeight-ns), ' : ', (es+x, canvasHeight-ns+x))
 
@@ -252,6 +257,15 @@ def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(
             for j in [-1,0,1] :
                 pass
                 imgLookupIndex[ns+i, es+j] = index
+
+    # Show a specific postcode more prominently. ???? Do this in TK ?
+    if foundKey :
+        overlay = img.copy()
+        x = 30
+        colour = areaColourDictRGB.get(areaKey, pcDefaultColourRGB)
+        cv2.circle(overlay, center=(esKey, canvasHeight-nsKey), radius=x, color=colour, thickness=-1)
+        alpha = 0.5
+        img = cv2.addWeighted(overlay, alpha, img, 1-alpha, 0)
 
     #cvtitle = 'Title' if title == None else title
     #v_km = (topRight[0] - bottomLeft[0]) // 1000

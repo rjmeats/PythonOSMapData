@@ -3,10 +3,7 @@ import os
 from cv2 import cv2
 from tkinter import Tk, Canvas, mainloop
 
-pcDefaultColour = "black"
 pcDefaultColourRGB = (128,128,128)
-
-pcDefaultColourTuple = (pcDefaultColour, pcDefaultColourRGB)
 
 def assignAreasToColourGroups(df, verbose=False) :
     # Determine extent of each Postcode Area
@@ -38,12 +35,12 @@ def assignAreasToColourGroups(df, verbose=False) :
     # Doesn't seem to work very well = e.g. YO (York) and TS (Teeside) have same colour, and also WC and SE in London. Also
     # PE (Peterborough) and MK (Milton Keynes). IG/RM/SS form a triple ! Probably more ..
     # https://stackoverflow.com/questions/309149/generate-distinctly-different-rgb-colors-in-graphs has lots of colours about half way down
-    availableColours = [ "red", "blue", "green", "yellow", "orange", "purple", "brown", 
-                            "pink", "cyan2", "magenta2", "violet", "grey"]
+    #availableColours = [ "red", "blue", "green", "yellow", "orange", "purple", "brown", 
+    #                        "pink", "cyan2", "magenta2", "violet", "grey"]
     availableColoursRGB = [ (255,0,0), (0,0,255), (0,255,0), (255,255,0), (255,165,0), (160,32,240), (165,42,42), 
                             (255,192,203), (0,238,238), (238,0,238), (238,130,238), (190,190,190)]
 
-    # Soften the colours
+    # Soften the RGB colours
     ac2 = []
     for c in availableColoursRGB :
         n = [0,0,0]
@@ -59,10 +56,11 @@ def assignAreasToColourGroups(df, verbose=False) :
 
     availableColoursRGB = ac2
 
-    numGroups = len(availableColours)
+    numGroups = len(availableColoursRGB)
 
     # Set up a list of lists, one per colour
     colourGroupsList = []
+    # Candidate for defaultDict ?
     for i in range(numGroups) :
         colourGroupsList.append([])
 
@@ -74,10 +72,9 @@ def assignAreasToColourGroups(df, verbose=False) :
     d = {}
     for i in range(numGroups) :
         for a in colourGroupsList[i] :
-            d[a] = (availableColours[i],availableColoursRGB[i])
+            d[a] = availableColoursRGB[i]
 
     return d
-
 
 tkObjDict = {}
 dfClickLookup = None
@@ -95,6 +92,10 @@ def onObjectClick(event):
     print(f'obj={objID} : pc={pc}')
     print(pcinfo)
 
+def rgbTupleToHexString(rgb) :
+    r,g,b = rgb
+    return f'#{r:02x}{g:02x}{b:02x}'
+
 def tkplotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, keyPostcode=None) :
 
     global dfClickLookup
@@ -111,11 +112,9 @@ def tkplotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, k
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
-#        if index % (100000/density) == 0 :
         if index % (100000) == 0 :
             print(index, es, ns, pc)
-        #colour = areaColourDict.get(area, pcDefaultColour)
-        colour = areaColourDict.get(area, pcDefaultColourTuple)[0]
+        colour = rgbTupleToHexString(areaColourDict.get(area, pcDefaultColourRGB))
         objid = w.create_oval(es,canvasHeight-ns,es,canvasHeight-ns, fill=colour, outline=colour, width=2)
         w.tag_bind(objid, '<ButtonPress-1>', onObjectClick)    
         #print(f'Adding objid: {objid}')
@@ -228,8 +227,7 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, 
         (es, ns, pc, area) = r
         if index % (100000) == 0 :
             print(index, es, ns, pc)
-        #colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
-        colour = areaColourDict.get(area, pcDefaultColourTuple)[1]
+        colour = areaColourDict.get(area, pcDefaultColourRGB)
         #circle radius = 0 == single pixel. 
         #                          x
         # radius=1 gives a cross: xxx
@@ -258,7 +256,7 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, 
     if foundKey :
         overlay = img.copy()
         x = 30
-        colour = areaColourDict.get(areaKey, pcDefaultColourTuple)[1]
+        colour = areaColourDict.get(areaKey, pcDefaultColourRGB)
         cv2.circle(overlay, center=(esKey, canvasHeight-nsKey), radius=x, color=colour, thickness=-1)
         alpha = 0.5
         img = cv2.addWeighted(overlay, alpha, img, 1-alpha, 0)

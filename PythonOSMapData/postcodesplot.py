@@ -6,6 +6,8 @@ from tkinter import Tk, Canvas, mainloop
 pcDefaultColour = "black"
 pcDefaultColourRGB = (128,128,128)
 
+pcDefaultColourTuple = (pcDefaultColour, pcDefaultColourRGB)
+
 def assignAreasToColourGroups(df, verbose=False) :
     # Determine extent of each Postcode Area
 
@@ -70,13 +72,11 @@ def assignAreasToColourGroups(df, verbose=False) :
 
     # Produce a dictionary to map each Postcode Area to its colour
     d = {}
-    dRGB = {}
     for i in range(numGroups) :
         for a in colourGroupsList[i] :
-            d[a] = availableColours[i]
-            dRGB[a] = availableColoursRGB[i]
+            d[a] = (availableColours[i],availableColoursRGB[i])
 
-    return d, dRGB
+    return d
 
 
 tkObjDict = {}
@@ -95,13 +95,10 @@ def onObjectClick(event):
     print(f'obj={objID} : pc={pc}')
     print(pcinfo)
 
-def tkplotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100, keyPostcode=None) :
-
-    canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
-    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+def tkplotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, keyPostcode=None) :
 
     global dfClickLookup
-    dfClickLookup = df
+    dfClickLookup = dfSlice
 
     # Vary width of oval dot depending on density ????
     # Do we need to use 'oval's to do the plotting, rather than points ?
@@ -114,9 +111,11 @@ def tkplotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(7
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
-        if index % (100000/density) == 0 :
+#        if index % (100000/density) == 0 :
+        if index % (100000) == 0 :
             print(index, es, ns, pc)
-        colour = areaColourDict.get(area, pcDefaultColour)
+        #colour = areaColourDict.get(area, pcDefaultColour)
+        colour = areaColourDict.get(area, pcDefaultColourTuple)[0]
         objid = w.create_oval(es,canvasHeight-ns,es,canvasHeight-ns, fill=colour, outline=colour, width=2)
         w.tag_bind(objid, '<ButtonPress-1>', onObjectClick)    
         #print(f'Adding objid: {objid}')
@@ -205,11 +204,7 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-#def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100, keyPostcode=None) :
-def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, keyPostcode=None) :
-
-    #canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
-    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(dfSlice)
+def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, keyPostcode=None) :
 
     print()
     print(dfSlice[0:1].T)
@@ -231,11 +226,10 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, keyPostcode=None
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
-#        if index % (100000/density) == 0 :
         if index % (100000) == 0 :
             print(index, es, ns, pc)
-            #print('...', type(index), type(es), type(ns), type(pc))
-        colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
+        #colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
+        colour = areaColourDict.get(area, pcDefaultColourTuple)[1]
         #circle radius = 0 == single pixel. 
         #                          x
         # radius=1 gives a cross: xxx
@@ -264,7 +258,7 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, keyPostcode=None
     if foundKey :
         overlay = img.copy()
         x = 30
-        colour = areaColourDictRGB.get(areaKey, pcDefaultColourRGB)
+        colour = areaColourDict.get(areaKey, pcDefaultColourTuple)[1]
         cv2.circle(overlay, center=(esKey, canvasHeight-nsKey), radius=x, color=colour, thickness=-1)
         alpha = 0.5
         img = cv2.addWeighted(overlay, alpha, img, 1-alpha, 0)
@@ -289,13 +283,13 @@ def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(
     fullTitle = dimensions if title == None else f'{title} : {dimensions}'
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
+    areaColourDict = assignAreasToColourGroups(dfSlice)
 
     img = None
     if plotter.upper() == 'CV2' :
-        img = cv2plotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, keyPostcode)
-        #img = cv2plotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=keyPostcode)
+        img = cv2plotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, keyPostcode)
     elif plotter.upper() == 'TK' :
-        tkplotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=keyPostcode)
+        tkplotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, keyPostcode)
     else :
         print(f'*** Unknown plotter specified: {plotter}')
 

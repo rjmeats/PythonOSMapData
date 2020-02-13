@@ -205,10 +205,11 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100, keyPostcode=None) :
+#def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100, keyPostcode=None) :
+def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, keyPostcode=None) :
 
-    canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
-    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(df)
+    #canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
+    areaColourDict, areaColourDictRGB = assignAreasToColourGroups(dfSlice)
 
     print()
     print(dfSlice[0:1].T)
@@ -230,7 +231,8 @@ def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
         (es, ns, pc, area) = r
-        if index % (100000/density) == 0 :
+#        if index % (100000/density) == 0 :
+        if index % (100000) == 0 :
             print(index, es, ns, pc)
             #print('...', type(index), type(es), type(ns), type(pc))
         colour = areaColourDictRGB.get(area, pcDefaultColourRGB)
@@ -267,12 +269,9 @@ def cv2plotSpecific(df, title='', canvasHeight=800, bottomLeft=(0,0), topRight=(
         alpha = 0.5
         img = cv2.addWeighted(overlay, alpha, img, 1-alpha, 0)
 
-    #cvtitle = 'Title' if title == None else title
-    #v_km = (topRight[0] - bottomLeft[0]) // 1000
-    #h_km = (topRight[1] - bottomLeft[1]) // 1000
-    #dimensions = f'{v_km} km x {h_km} km'
-    #cvtitle = f'{cvtitle} : {dimensions}'
     # For CV2 we need to reverse the colour ordering of the array to BGR
+    if title == '' :
+        title = 'Title'
     cv2.imshow(title, convertToBGR(img))
     cv2.setMouseCallback(title, CV2ClickEvent)
     cv2.waitKey(0)
@@ -289,9 +288,12 @@ def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(
     dimensions = f'{v_km} km x {h_km} km'
     fullTitle = dimensions if title == None else f'{title} : {dimensions}'
 
+    canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
+
     img = None
     if plotter.upper() == 'CV2' :
-        img = cv2plotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=keyPostcode)
+        img = cv2plotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, keyPostcode)
+        #img = cv2plotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=keyPostcode)
     elif plotter.upper() == 'TK' :
         tkplotSpecific(df, title=fullTitle, canvasHeight=800, density=1, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=keyPostcode)
     else :

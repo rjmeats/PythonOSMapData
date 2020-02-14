@@ -5,16 +5,33 @@ from tkinter import Tk, Canvas, mainloop
 
 pcDefaultColourRGB = (128,128,128)
 
-def assignAreasToColourGroups(df, verbose=False) :
-    # Determine extent of each Postcode Area
+def areaTypeToColumnName(areaType) :
+    if areaType.lower() == 'pa' :
+        areaTypeColumn = 'PostcodeArea'
+    elif areaType.lower() == 'ow' :
+        areaTypeColumn = 'Outward'
+    elif areaType.lower() == 'wd' :
+        areaTypeColumn = 'Ward Name'
+    elif areaType.lower() == 'pc' :
+        areaTypeColumn = 'Postcode'
+    else :
+        print(f'*** Unrecognised areaType {areaType} when converting to a column name.')
+        areaTypeColumn = 'PostcodeArea'
+
+    return areaTypeColumn
+
+def assignAreasToColourGroups(df, areaType='pa', verbose=False) :
+
+    areaTypeColumn = areaTypeToColumnName(areaType)
 
     if verbose :
-            print('Determining Eastings and Northing ranges by Postcode area:')
+            print(f'Determining Eastings and Northing ranges by {areaTypeColumn}:')
 
+    # Determine extent of each Postcode Area
     # Ignore 0s
     df = df [ df['Eastings'] != 0 ]
-    dfAreaExtents = df[ ['PostcodeArea', 'Eastings', 'Northings'] ].groupby('PostcodeArea').agg(
-                Cases = ('PostcodeArea', 'count'),
+    dfAreaExtents = df[ [areaTypeColumn, 'Eastings', 'Northings'] ].groupby(areaTypeColumn).agg(
+                Cases = (areaTypeColumn, 'count'),
                 Min_E = ('Eastings', 'min'),
                 Max_E = ('Eastings', 'max'),
                 Min_N = ('Northings', 'min'),
@@ -23,7 +40,7 @@ def assignAreasToColourGroups(df, verbose=False) :
     dfAreaExtents.sort_values('Min_E', inplace=True)
     if verbose :
         print()
-        print('Eastings and Northing ranges by Postcode area:')
+        print(f'Eastings and Northing ranges by {areaTypeColumn}:')
         print()
         print(type(dfAreaExtents))
         print()
@@ -96,7 +113,7 @@ def rgbTupleToHexString(rgb) :
     r,g,b = rgb
     return f'#{r:02x}{g:02x}{b:02x}'
 
-def tkplotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, keyPostcode=None) :
+def tkplotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, colouringColumn = 'PostcodeArea', keyPostcode=None) :
 
     global dfClickLookup
     dfClickLookup = dfSlice
@@ -110,7 +127,7 @@ def tkplotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, k
     master.title(title)
     w.pack()
 
-    for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
+    for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
         (es, ns, pc, area) = r
         if index % (100000) == 0 :
             print(index, es, ns, pc)
@@ -203,7 +220,7 @@ def CV2ClickEvent(event, x, y, flags, param):
             print(f'index={index}')
             print(pcinfo)
 
-def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, keyPostcode=None) :
+def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, colouringColumn = 'PostcodeArea', keyPostcode=None) :
 
     print()
     print(dfSlice[0:1].T)
@@ -223,7 +240,9 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, 
     nsKey = -1
     areaKey = ''
 
-    for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice['PostcodeArea'])):
+    
+
+    for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
         (es, ns, pc, area) = r
         if index % (100000) == 0 :
             print(index, es, ns, pc)
@@ -271,7 +290,8 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, 
 
     return img
 
-def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=1, keyPostcode=None, plotter='CV2') :
+def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
+            colouringAreaType = 'pa', keyPostcode=None, plotter='CV2') :
 
     # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too
     # early ? Especially noticeable for National Grid squares ought to br 100 x 100, but end up showing as larger.
@@ -281,13 +301,14 @@ def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(
     fullTitle = dimensions if title == None else f'{title} : {dimensions}'
 
     canvasHeight, canvas_width, dfSlice = getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
-    areaColourDict = assignAreasToColourGroups(dfSlice)
+    colouringColumn = areaTypeToColumnName(colouringAreaType)
+    areaColourDict = assignAreasToColourGroups(dfSlice, colouringAreaType)
 
     img = None
     if plotter.upper() == 'CV2' :
-        img = cv2plotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, keyPostcode)
+        img = cv2plotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, colouringColumn, keyPostcode)
     elif plotter.upper() == 'TK' :
-        tkplotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, keyPostcode)
+        tkplotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, colouringColumn, keyPostcode)
     else :
         print(f'*** Unknown plotter specified: {plotter}')
 

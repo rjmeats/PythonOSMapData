@@ -18,9 +18,7 @@ be processed in various ways:
 The utility runs as a command-line program from the main() function at the bottom of this module.
 '''
 
-
-
-# Local Python files 
+# Local Python files to import
 import postcodesgeneratedf as pcgen     # To populate a dataframe from source data files
 import postcodesplot as pcplot          # To handle details of plotting postcode-based maps
 import nationalgrid as ng               # To handle OS National Grid squares
@@ -487,7 +485,8 @@ def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
     dfArea = df
     bottomLeft, topRight = getGridRange(dfArea, marginProportion=0.1, verbose=verbose)
     title = 'Great Britain'
-    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    colouringAreaType = 'pa'
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, plotter=plotter)
     
     # Save the image in a file.
     if savefilelocation != None :
@@ -510,7 +509,8 @@ def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None
     town = getPostTownOfFirstRow(dfArea)
     title = f'Postcode area {postcodeArea.upper()} [{town}]'
 
-    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    colouringAreaType = 'pa'
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, plotter=plotter)
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.pa.{postcodeArea.lower()}.png'
         pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
@@ -556,7 +556,8 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
     
     title=f'National Grid square {sqName.upper()} [{sq.getLabel()}]'
 
-    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, plotter=plotter)
+    colouringAreaType = 'pa'
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, plotter=plotter)
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.ng.{sqName.lower()}.png'
         pcplot.writeImageArrayToFile(filename, img, plotter=plotter)
@@ -647,7 +648,9 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
         print(f'- bottomLeft = {bottomLeft} : topRight = {topRight}')
         print(f'- postcode count = {dfArea.shape[0]}')
 
-    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=formattedPostcode, plotter=plotter)
+    #colouringAreaType = 'wd'
+    img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=formattedPostcode, 
+                                colouringAreaType=colouringAreaType, plotter=plotter)
 
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.pc.{formattedPostcode.replace(" ", "").lower()}.png'

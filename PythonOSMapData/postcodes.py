@@ -648,7 +648,7 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
         print(f'- bottomLeft = {bottomLeft} : topRight = {topRight}')
         print(f'- postcode count = {dfArea.shape[0]}')
 
-    #colouringAreaType = 'wd'
+    colouringAreaType = 'pa'
     img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=formattedPostcode, 
                                 colouringAreaType=colouringAreaType, plotter=plotter)
 

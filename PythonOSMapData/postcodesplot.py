@@ -149,7 +149,7 @@ def convertToBGR(imgArray) :
     """ Converts a 3-D [y,x,RGB] numpy array to [y,x,BGR] format, (for use with CV2) """
     return imgArray[:,:,::-1]
 
-def getScaledPlot(df, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
+def getScaledPlot(df, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
     e0 = bottomLeft[0]
     e1 = topRight[0]
     n0 = bottomLeft[1]
@@ -194,12 +194,9 @@ def getScaledPlot(df, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250
 
     return canvasHeight, canvas_width, dfSlice
 
-# Map 
-from cv2 import cv2
 
 img = None
 imgLookupIndex = None
-
 
 def CV2ClickEvent(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
@@ -239,8 +236,6 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, 
     esKey = -1
     nsKey = -1
     areaKey = ''
-
-    
 
     for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
         (es, ns, pc, area) = r
@@ -284,13 +279,14 @@ def cv2plotSpecific(dfSlice, title, canvasHeight, canvas_width, areaColourDict, 
     if title == '' :
         title = 'Title'
     cv2.imshow(title, convertToBGR(img))
+    cv2.moveWindow(title, 200, 20)
     cv2.setMouseCallback(title, CV2ClickEvent)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
     return img
 
-def plotSpecific(df, title=None, canvasHeight=1000, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
+def plotSpecific(df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
             colouringAreaType = 'pa', keyPostcode=None, plotter='CV2') :
 
     # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too

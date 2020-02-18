@@ -155,8 +155,14 @@ class postcodesPlotter() :
 
         return canvasHeight, canvas_width, dfSlice
 
-    #def plotSpecific(self, df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
-    #            colouringAreaType = 'pa', keyPostcode=None, plotter='CV2') :
+    def __init__(self) :
+        pass
+
+    def _initialisePlot(self, title, canvasHeight, canvas_width) :
+        self.title = title
+        self.canvasHeight = canvasHeight
+        self.canvas_width = canvas_width
+
     def plotSpecific(self, df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
                 colouringAreaType = 'pa', keyPostcode=None) :
 
@@ -171,27 +177,50 @@ class postcodesPlotter() :
         colouringColumn = self.areaTypeToColumnName(colouringAreaType)
         areaColourDict = self.assignAreasToColourGroups(dfSlice, colouringAreaType)
 
-        img = self.plot(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, colouringColumn, keyPostcode)
-        #if plotter.upper() == 'CV2' :
-        #    img = cv2plotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, colouringColumn, keyPostcode)
-        #elif plotter.upper() == 'TK' :
-        #    tkplotSpecific(dfSlice, fullTitle, canvasHeight, canvas_width, areaColourDict, colouringColumn, keyPostcode)
-        #else :
-        #    print(f'*** Unknown plotter specified: {plotter}')
+        self._initialisePlot(fullTitle, canvasHeight, canvas_width)
+        self.dfClickLookup = dfSlice
 
-        return img
+        foundKey = False
+        esKey = -1
+        nsKey = -1
+        areaKey = ''
 
-    def plot(self, dfSlice, title, canvasHeight, canvas_width, areaColourDict, colouringColumn = 'PostcodeArea', keyPostcode=None) :
+        for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
+            (es, ns, pc, area) = r
+            if index % (100000) == 0 :
+                print(index, es, ns, pc)
+            rgbColour = areaColourDict.get(area, self.pcDefaultColourRGB)
+            self._drawPostcode(index, es, ns, pc, area, rgbColour)
+
+            if keyPostcode != None and pc == keyPostcode :
+                esKey = es
+                nsKey = ns
+                areaKey = area
+                foundKey = True
+
+        # Show a specific postcode more prominently. ????
+        if foundKey :
+            rgbColour = areaColourDict.get(areaKey, self.pcDefaultColourRGB)
+            self._highlightKeyPostcode(esKey, nsKey, keyPostcode, areaKey, rgbColour)
+
+        self._displayPlot()
+
+        return self._getImage()
+
+    def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
+        pass
+
+    def _highlightKeyPostcode(self, esKey, nsKey, keyPostcode, areaKey, rgbColour) :
+        pass
+
+    def _getImage(self) :
+        return None
+
+    def _displayPlot(self) :
         pass
 
     def writeImageArrayToFile(self, filename, img) :
         pass
-
-    #def writeImageArrayToFile(self, filename, img, plotter='CV2') :
-    #    if plotter == 'CV2' :
-    #        writeImageArrayToFileUsingCV2(filename, img)
-    #    else :
-    #        writeImageArrayToFileUsingTK(filename, img)
 
 #############################################################################################
 
@@ -199,6 +228,7 @@ class TKPostcodesPlotter(postcodesPlotter) :
 
     def __init__(self) :
         # Avoid is unsubscriptable error bodge for now.
+        super().__init__()
         self.tkObjDict = {}
         self.dfClickLookup = pd.DataFrame()
 
@@ -215,31 +245,28 @@ class TKPostcodesPlotter(postcodesPlotter) :
         print(f'obj={objID} : pc={pc}')
         print(pcinfo)
 
-    #def tkplotSpecific(self, dfSlice, title, canvasHeight, canvas_width, areaColourDict, colouringColumn = 'PostcodeArea', keyPostcode=None) :
-    def plot(self, dfSlice, title, canvasHeight, canvas_width, areaColourDict, colouringColumn = 'PostcodeArea', keyPostcode=None) :
+    def _initialisePlot(self, title, canvasHeight, canvas_width) :
+        super()._initialisePlot(title, canvasHeight, canvas_width)
+        self.master = Tk()
+        self.w = Canvas(self.master, width=canvas_width, height=canvasHeight)
+        self.master.title(title)
+        self.w.pack()
 
-        self.dfClickLookup = dfSlice
-
-        # Vary width of oval dot depending on density ????
-        # Do we need to use 'oval's to do the plotting, rather than points ?
-
-        # https://effbot.org/tkinterbook/canvas.htm
-        master = Tk()
-        w = Canvas(master, width=canvas_width, height=canvasHeight)
-        master.title(title)
-        w.pack()
-
-        for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
-            (es, ns, pc, area) = r
-            if index % (100000) == 0 :
-                print(index, es, ns, pc)
-            colour = self.rgbTupleToHexString(areaColourDict.get(area, self.pcDefaultColourRGB))
-            objid = w.create_oval(es,canvasHeight-ns,es,canvasHeight-ns, fill=colour, outline=colour, width=2)
-            w.tag_bind(objid, '<ButtonPress-1>', self.onTKObjectClick)    
-            #print(f'Adding objid: {objid}')
-            self.tkObjDict[objid] = pc
-
+    def _displayPlot(self) :
         mainloop()
+
+    def _getImage(self) :
+        return None
+
+    def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
+        colour = self.rgbTupleToHexString(rgbColour)
+        objid = self.w.create_oval(es,self.canvasHeight-ns,es,self.canvasHeight-ns, fill=colour, outline=colour, width=2)
+        self.w.tag_bind(objid, '<ButtonPress-1>', self.onTKObjectClick)    
+        #print(f'Adding objid: {objid}')
+        self.tkObjDict[objid] = pc
+
+    def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
+        pass
 
     def writeImageArrayToFileUsing(self, filename, img) :
         print()
@@ -257,9 +284,9 @@ class CV2PostcodesPlotter(postcodesPlotter) :
         """ Converts a 3-D [y,x,RGB] numpy array to [y,x,BGR] format, (for use with CV2) """
         return imgArray[:,:,::-1]
 
-
     def __init__(self) :
         # Avoid is unsubscriptable error bodge for now.
+        super().__init__()
         self.img = self.newImageArray(10,10)    
         self.imgLookupIndex = np.full((10, 10), 0, dtype='int32')
         self.dfClickLookup = None
@@ -283,75 +310,48 @@ class CV2PostcodesPlotter(postcodesPlotter) :
                 print(f'index={index}')
                 print(pcinfo)
 
-    #def cv2plotSpecific(self, dfSlice, title, canvasHeight, canvas_width, areaColourDict, colouringColumn = 'PostcodeArea', keyPostcode=None) :
-    def plot(self, dfSlice, title, canvasHeight, canvas_width, areaColourDict, colouringColumn = 'PostcodeArea', keyPostcode=None) :
-
-        print()
-        print(dfSlice[0:1].T)
-
-        #global img
-        #global dfClickLookup
-        #global imgLookupIndex
+    def _initialisePlot(self, title, canvasHeight, canvas_width) :
+        super()._initialisePlot(title, canvasHeight, canvas_width)
         self.img = self.newImageArray(canvasHeight, canvas_width)
         self.imgLookupIndex = np.full((canvasHeight+2, canvas_width+2), 0, dtype='int32')   # +2s partly because of size of circle,
         # but also getting some out of bounds errors before [-1,0,1] adjustment was there - because ????
-        self.dfClickLookup = dfSlice
 
-        #print(dfSlice.dtypes)
-        
-        foundKey = False
-        esKey = -1
-        nsKey = -1
-        areaKey = ''
-
-        for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
-            (es, ns, pc, area) = r
-            if index % (100000) == 0 :
-                print(index, es, ns, pc)
-            colour = areaColourDict.get(area, self.pcDefaultColourRGB)
-            #circle radius = 0 == single pixel. 
-            #                          x
-            # radius=1 gives a cross: xxx
-            #                          x
-            # cv2.circle(img, center=(es, canvasHeight-ns), radius=0, color=colour, thickness=-1)
-
-            if keyPostcode != None and pc == keyPostcode :
-                esKey = es
-                nsKey = ns
-                areaKey = area
-                foundKey = True
-
-            x = 2   # Seems to work well
-            cv2.rectangle(self.img, pt1=(es, canvasHeight-ns), pt2=(es+x, canvasHeight-ns+x), color=colour, thickness=-1)
-            #if index % (1000/density) == 0 :
-            #    print('...', (es, canvasHeight-ns), ' : ', (es+x, canvasHeight-ns+x))
-
-            # Record item against a small 3x3 square of points, not just the central one. Why is this necessary,
-            # how does it relate to the radius value ? What about close postcodes overwriting each other ?
-            for i in [-1,0,1] :
-                for j in [-1,0,1] :
-                    pass
-                    self.imgLookupIndex[ns+i, es+j] = index
-
-        # Show a specific postcode more prominently. ???? Do this in TK ?
-        if foundKey :
-            overlay = self.img.copy()
-            x = 30
-            colour = areaColourDict.get(areaKey, self.pcDefaultColourRGB)
-            cv2.circle(overlay, center=(esKey, canvasHeight-nsKey), radius=x, color=colour, thickness=-1)
-            alpha = 0.5
-            self.img = cv2.addWeighted(overlay, alpha, self.img, 1-alpha, 0)
-
+    def _displayPlot(self) :
         # For CV2 we need to reverse the colour ordering of the array to BGR
-        if title == '' :
-            title = 'Title'
-        cv2.imshow(title, self.convertToBGR(self.img))
-        cv2.moveWindow(title, 200, 20)
-        cv2.setMouseCallback(title, self.CV2ClickEvent)
+        if self.title == '' :
+            self.title = 'Title'
+        cv2.imshow(self.title, self.convertToBGR(self.img))
+        cv2.moveWindow(self.title, 200, 20)
+        cv2.setMouseCallback(self.title, self.CV2ClickEvent)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+    def _getImage(self) :
         return self.img
+
+    def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
+        #circle radius = 0 == single pixel. 
+        #                          x
+        # radius=1 gives a cross: xxx
+        #                          x
+        # cv2.circle(img, center=(es, canvasHeight-ns), radius=0, color=colour, thickness=-1)
+
+        x = 2   # Seems to work well
+        cv2.rectangle(self.img, pt1=(es, self.canvasHeight-ns), pt2=(es+x, self.canvasHeight-ns+x), color=rgbColour, thickness=-1)
+
+        # Record item against a small 3x3 square of points, not just the central one. Why is this necessary,
+        # how does it relate to the radius value ? What about close postcodes overwriting each other ?
+        for i in [-1,0,1] :
+            for j in [-1,0,1] :
+                pass
+                self.imgLookupIndex[ns+i, es+j] = index
+
+    def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
+        overlay = self.img.copy()
+        x = 30
+        cv2.circle(overlay, center=(es, self.canvasHeight-ns), radius=x, color=rgbColour, thickness=-1)
+        alpha = 0.5
+        self.img = cv2.addWeighted(overlay, alpha, self.img, 1-alpha, 0)
 
     def writeImageArrayToFileUsing(self, filename, img) :
 

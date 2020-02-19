@@ -10,6 +10,8 @@ def getPlotter(plotter) :
         return CV2PostcodesPlotter()
     elif plotter.upper() == 'TK' :
         return TKPostcodesPlotter()
+    elif plotter.upper() == 'BOKEH' :
+        return BokehPostcodesPlotter()
     else :
         print(f'*** Unknown plotter type: {plotter} - using CV2')
         return CV2PostcodesPlotter()
@@ -364,4 +366,53 @@ class CV2PostcodesPlotter(postcodesPlotter) :
             print(f'Image file saved as: {filename}')
         else :
             print(f'*** Failed to save image file as: {filename}')
+
+
+#############################################################################################
+
+from bokeh.plotting import figure, output_file, show
+
+class BokehPostcodesPlotter(postcodesPlotter) :
+
+    # Bokeh point by point is slow!
+    # Can do a bulk plot using arrays ?
+    # Option to save.
+    # Show key postcode
+    # Interactivity options
+    # Draw a circle ?
+    # Scale is not pixels - smaller ?
+    # Shows axes and gridlines ?
+    # No wait after showing.
+    # created postcodes.html file - how determined ?
+    # Just loading file into browser takes quite a few seconds. HTML contains a large json data block
+
+    def __init__(self) :
+        # Avoid is unsubscriptable error bodge for now.
+        super().__init__()
+
+    #https://docs.bokeh.org/en/latest/docs/user_guide/quickstart.html#userguide-quickstart
+
+    def _initialisePlot(self, title, canvasHeight, canvas_width) :
+        super()._initialisePlot(title, canvasHeight, canvas_width)
+
+        self.bkplot = figure(title=title, x_axis_label='E', y_axis_label='N')
+
+    def _displayPlot(self) :
+        print()
+        print('.. displaying Bokeh plot ..')
+        show(self.bkplot)
+
+    def _getImage(self) :
+        return None
+
+    def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
+        colour = self.rgbTupleToHexString(rgbColour)
+        self.bkplot.circle(es, ns, line_color=colour, fill_color=colour, size=3)
+
+    def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
+        pass
+
+    def writeImageArrayToFileUsing(self, filename, img) :
+        print()
+        print(f'*** Bokeh plotter save-to-file not implemented - use the CV2 plotter instead.')
 

@@ -120,17 +120,18 @@ class postcodesPlotter() :
         e_extent = e1 - e0
         n_extent = n1 - n0
 
-        print(f'canvasHeight = {canvasHeight} : bottomLeft = {bottomLeft} : topRight = {topRight}')
+        print(f'postcodes = {df.shape[0]} : canvasHeight = {canvasHeight} : bottomLeft = {bottomLeft} : topRight = {topRight}')
         canvasHeight = int(canvasHeight)                        # pixels
-        canvas_width = int(canvasHeight * e_extent / n_extent)   # pixels
+        canvasWidth = int(canvasHeight * e_extent / n_extent)   # pixels
         scaling_factor = n_extent / canvasHeight            # metres per pixel
 
-        print(f'.. scale = {scaling_factor} : canvas_width = {canvas_width}')
+        print(f'.. scale = {scaling_factor} : canvasWidth = {canvasWidth}')
 
         # Could do bulk e/n scaling first too in bulk ?
         # Keep more Scotland (and perhaps Wales, and perhaps more generally remote areas) to maintain shape of landmass ?
         if density != 1 :
             dfSlice = df.copy().iloc[::density]
+            print(f'.. postcodes after density reduction = {dfSlice.shape[0]}')
         else :
             dfSlice = df.copy()
         #print(dfSlice.dtypes)
@@ -147,23 +148,23 @@ class postcodesPlotter() :
 
         dfSlice = dfSlice [ dfSlice['Eastings'] > 0 ]
         dfSlice = dfSlice [ (dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvasHeight)]
-        dfSlice = dfSlice [ (dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)]
+        dfSlice = dfSlice [ (dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvasWidth)]
 
         # Why can't the above be combined into one big combination ?
         # Also, any way to check n_scale and e_scaled are in a range ?
         #dfSlice = dfSlice [ dfSlice['Eastings'] > 0 &
         #                    ((dfSlice['n_scaled'] >= 0) & (dfSlice['n_scaled'] <= canvasHeight)) &
-        #                    ((dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvas_width)) ]
+        #                    ((dfSlice['e_scaled'] >= 0) & (dfSlice['e_scaled'] <= canvasWidth)) ]
 
-        return canvasHeight, canvas_width, dfSlice
+        return canvasHeight, canvasWidth, dfSlice
 
     def __init__(self) :
         pass
 
-    def _initialisePlot(self, title, canvasHeight, canvas_width) :
+    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
         self.title = title
         self.canvasHeight = canvasHeight
-        self.canvas_width = canvas_width
+        self.canvasWidth = canvasWidth
 
     def plotSpecific(self, df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
                 colouringAreaType = 'pa', keyPostcode=None) :
@@ -175,11 +176,11 @@ class postcodesPlotter() :
         dimensions = f'{v_km} km x {h_km} km'
         fullTitle = dimensions if title == None else f'{title} : {dimensions}'
 
-        canvasHeight, canvas_width, dfSlice = self.getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
+        canvasHeight, canvasWidth, dfSlice = self.getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
         colouringColumn = self.areaTypeToColumnName(colouringAreaType)
         areaColourDict = self.assignAreasToColourGroups(dfSlice, colouringAreaType)
 
-        self._initialisePlot(fullTitle, canvasHeight, canvas_width)
+        self._initialisePlot(fullTitle, canvasHeight, canvasWidth)
         self.dfClickLookup = dfSlice
 
         foundKey = False
@@ -247,10 +248,10 @@ class TKPostcodesPlotter(postcodesPlotter) :
         print(f'obj={objID} : pc={pc}')
         print(pcinfo)
 
-    def _initialisePlot(self, title, canvasHeight, canvas_width) :
-        super()._initialisePlot(title, canvasHeight, canvas_width)
+    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
+        super()._initialisePlot(title, canvasHeight, canvasWidth)
         self.master = Tk()
-        self.w = Canvas(self.master, width=canvas_width, height=canvasHeight)
+        self.w = Canvas(self.master, width=canvasWidth, height=canvasHeight)
         self.master.title(title)
         self.w.pack()
 
@@ -312,10 +313,10 @@ class CV2PostcodesPlotter(postcodesPlotter) :
                 print(f'index={index}')
                 print(pcinfo)
 
-    def _initialisePlot(self, title, canvasHeight, canvas_width) :
-        super()._initialisePlot(title, canvasHeight, canvas_width)
-        self.img = self.newImageArray(canvasHeight, canvas_width)
-        self.imgLookupIndex = np.full((canvasHeight+2, canvas_width+2), 0, dtype='int32')   # +2s partly because of size of circle,
+    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
+        super()._initialisePlot(title, canvasHeight, canvasWidth)
+        self.img = self.newImageArray(canvasHeight, canvasWidth)
+        self.imgLookupIndex = np.full((canvasHeight+2, canvasWidth+2), 0, dtype='int32')   # +2s partly because of size of circle,
         # but also getting some out of bounds errors before [-1,0,1] adjustment was there - because ????
 
     def _displayPlot(self) :
@@ -374,13 +375,16 @@ from bokeh.plotting import figure, output_file, show
 
 class BokehPostcodesPlotter(postcodesPlotter) :
 
-    # Bokeh point by point is slow!
+    # Bokeh point by point is slow! As is opening html file it produces.
+    # - only usable for postcodes and some areas ?
+    # - perhaps need to play around with density option, based on number of points in slice to plot.
+    # - about 1000 points perhaps 
+    # - 9000 works but takes a minute or five (and .html takes ~30 seconds to display)
     # Can do a bulk plot using arrays ?
     # Option to save.
-    # Show key postcode
-    # Interactivity options
+    # Interactivity options - panning ?
     # Draw a circle ?
-    # Scale is not pixels - smaller ?
+    # Scale is not pixels - smaller ? Does it do scaling for us ?
     # Shows axes and gridlines ?
     # No wait after showing.
     # created postcodes.html file - how determined ?
@@ -392,10 +396,10 @@ class BokehPostcodesPlotter(postcodesPlotter) :
 
     #https://docs.bokeh.org/en/latest/docs/user_guide/quickstart.html#userguide-quickstart
 
-    def _initialisePlot(self, title, canvasHeight, canvas_width) :
-        super()._initialisePlot(title, canvasHeight, canvas_width)
+    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
+        super()._initialisePlot(title, canvasHeight, canvasWidth)
 
-        self.bkplot = figure(title=title, x_axis_label='E', y_axis_label='N')
+        self.bkplot = figure(title=title, plot_height=canvasHeight, plot_width=canvasWidth, x_axis_label='E', y_axis_label='N')
 
     def _displayPlot(self) :
         print()
@@ -410,7 +414,10 @@ class BokehPostcodesPlotter(postcodesPlotter) :
         self.bkplot.circle(es, ns, line_color=colour, fill_color=colour, size=3)
 
     def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
-        pass
+
+        alpha = 0.5
+        colour = self.rgbTupleToHexString(rgbColour)
+        self.bkplot.circle(es, ns, line_color=None, fill_color=colour, fill_alpha=alpha, radius=30)
 
     def writeImageArrayToFileUsing(self, filename, img) :
         print()

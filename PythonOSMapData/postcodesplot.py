@@ -105,12 +105,14 @@ class postcodesPlotter() :
             colourGroupsList[index % numGroups].append(row[0]) 
 
         # Produce a dictionary to map each Postcode Area to its colour
-        d = {}
+        dRGB = {}
+        dHexString = {}
         for i in range(numGroups) :
             for a in colourGroupsList[i] :
-                d[a] = availableColoursRGB[i]
+                dRGB[a] = availableColoursRGB[i]
+                dHexString[a] = self.rgbTupleToHexString(dRGB[a])
 
-        return d
+        return dRGB, dHexString
 
     def getScaledPlot(self, df, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=100) :
         e0 = bottomLeft[0]
@@ -178,7 +180,11 @@ class postcodesPlotter() :
 
         canvasHeight, canvasWidth, dfSlice = self.getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
         colouringColumn = self.areaTypeToColumnName(colouringAreaType)
-        areaColourDict = self.assignAreasToColourGroups(dfSlice, colouringAreaType)
+        areaColourNameDict, areaColourHexStringDict = self.assignAreasToColourGroups(dfSlice, colouringAreaType)
+
+
+        dfSlice['rgbColour'] = dfSlice[colouringColumn].map(areaColourNameDict)
+        dfSlice['hexColour'] = dfSlice[colouringColumn].map(areaColourHexStringDict)
 
         self._initialisePlot(fullTitle, canvasHeight, canvasWidth)
         self.dfClickLookup = dfSlice
@@ -189,16 +195,24 @@ class postcodesPlotter() :
         areaKey = ''
 
         if self._useBulkProcessing() :
-            self._bulkProcess(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice[colouringColumn])
+            self._bulkProcess(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['rgbColour'], dfSlice['hexColour'])
+            # NB Need to find key postcode info directly, rather than in loop
+            if keyPostcode != None :
+                dfKey = dfSlice [dfSlice['Postcode'] == keyPostcode ]
+                esKey = int(dfKey.reset_index().loc[0, 'e_scaled'])
+                nsKey = int(dfKey.reset_index().loc[0, 'n_scaled'])
+                areaKey = str(dfKey.reset_index().loc[0, colouringColumn])
+                foundKey = True
         else :
             for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
                 (es, ns, pc, area) = r
                 if index % (100000) == 0 :
                     print(index, es, ns, pc)
-                rgbColour = areaColourDict.get(area, self.pcDefaultColourRGB)
+                rgbColour = areaColourNameDict.get(area, self.pcDefaultColourRGB)
                 self._drawPostcode(index, es, ns, pc, area, rgbColour)
 
                 if keyPostcode != None and pc == keyPostcode :
+                    # Just store a reference ?
                     esKey = es
                     nsKey = ns
                     areaKey = area
@@ -206,8 +220,9 @@ class postcodesPlotter() :
 
         # Show a specific postcode more prominently. ????
         if foundKey :
-            rgbColour = areaColourDict.get(areaKey, self.pcDefaultColourRGB)
-            self._highlightKeyPostcode(esKey, nsKey, keyPostcode, areaKey, rgbColour)
+            rgbTupleColour = areaColourNameDict.get(areaKey, self.pcDefaultColourRGB)
+            hexStringColour = self.rgbTupleToHexString(rgbTupleColour)
+            self._highlightKeyPostcode(esKey, nsKey, keyPostcode, areaKey, rgbTupleColour, hexStringColour)
 
         self._displayPlot()
 
@@ -216,10 +231,13 @@ class postcodesPlotter() :
     def _useBulkProcessing(self) :
         return False
 
+    def _bulkProcess(self, sE, sN, sRGBTupleColour, sHexStringColour) :
+        pass
+
     def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
         pass
 
-    def _highlightKeyPostcode(self, esKey, nsKey, keyPostcode, areaKey, rgbColour) :
+    def _highlightKeyPostcode(self, esKey, nsKey, keyPostcode, areaKey, rgbTupleColour, hexStringColour) :
         pass
 
     def _getImage(self) :
@@ -277,7 +295,7 @@ class TKPostcodesPlotter(postcodesPlotter) :
     def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
         pass
 
-    def writeImageArrayToFileUsing(self, filename, img) :
+    def writeImageArrayToFile(self, filename, img) :
         print()
         print(f'*** TK plotter save-to-file not implemented - use the CV2 plotter instead.')
 
@@ -355,14 +373,14 @@ class CV2PostcodesPlotter(postcodesPlotter) :
                 pass
                 self.imgLookupIndex[ns+i, es+j] = index
 
-    def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
+    def _highlightKeyPostcode(self, es, ns, pc, area, rgbTupleColour, hexStringColour) :
         overlay = self.img.copy()
         x = 30
-        cv2.circle(overlay, center=(es, self.canvasHeight-ns), radius=x, color=rgbColour, thickness=-1)
+        cv2.circle(overlay, center=(es, self.canvasHeight-ns), radius=x, color=rgbTupleColour, thickness=-1)
         alpha = 0.5
         self.img = cv2.addWeighted(overlay, alpha, self.img, 1-alpha, 0)
 
-    def writeImageArrayToFileUsing(self, filename, img) :
+    def writeImageArrayToFile(self, filename, img) :
 
         outDir = os.path.dirname(filename)
         if not os.path.isdir(outDir) :
@@ -387,11 +405,14 @@ class BokehPostcodesPlotter(postcodesPlotter) :
     # - about 1000 points perhaps 
     # - 9000 works but takes a minute or five (and .html takes ~30 seconds to display)
     # Can do a bulk plot using arrays ?
-    # - yes, much quicker, but without allowing for colouring - do we need an extra df column with the
+    # - yes, much much quicker, but without allowing for colouring - do we need an extra df column with the
     #   colour-to-use in it ? NB This is calculated based on the area-type being coloured, so not fixed
     #   for a particular postcode, it's context-specific.
     #   NB html opens much more quickly too.
-    # Option to save.
+    # Option to save. NB Save button on web page downloads to a bokeh_plot.png file.
+    # E.g. CT15 6AE not drawn as expected - stretched to fill a square because nothing to plot beyond 600
+    # Something similar for ng:SZ (Isle of Wight)
+    # So coastal plots not working as expected due to not having full range of data in plot.
     # Interactivity options - panning ?
     # Draw a circle ?
     # Scale is not pixels - smaller ? Does it do scaling for us ?
@@ -404,7 +425,7 @@ class BokehPostcodesPlotter(postcodesPlotter) :
         # Avoid is unsubscriptable error bodge for now.
         super().__init__()
 
-    #https://docs.bokeh.org/en/latest/docs/user_guide/quickstart.html#userguide-quickstart
+    # https://docs.bokeh.org/en/latest/docs/user_guide/quickstart.html#userguide-quickstart
 
     def _initialisePlot(self, title, canvasHeight, canvasWidth) :
         super()._initialisePlot(title, canvasHeight, canvasWidth)
@@ -426,20 +447,20 @@ class BokehPostcodesPlotter(postcodesPlotter) :
         colour = self.rgbTupleToHexString(rgbColour)
         self.bkplot.circle(es, ns, line_color=colour, fill_color=colour, size=3)
 
-    def _bulkProcess(self, sE, sN, sColour) :
-        # Much faster, but how to apply colour ???? Presumably accepts an array too, but need to generate it.
-        # print(sColour.shape) # sColour contains the area codes to be coloured via dictionary lookup (and
-        # conversion to rgb string if lookup provides a tuple.)        
-        colour='red'
-        self.bkplot.circle(sE, sN, line_color=sColour, fill_color=colour, size=3)
+    def _bulkProcess(self, sE, sN, sRGBTupleColour, sHexStringColour) :
+        self.bkplot.circle(x=sE, y=sN, line_color=sHexStringColour, fill_color=sHexStringColour, size=3)
 
-    def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
-
+    def _highlightKeyPostcode(self, es, ns, pc, area, rgbTupleColour, hexStringColour) :
         alpha = 0.5
-        colour = self.rgbTupleToHexString(rgbColour)
-        self.bkplot.circle(es, ns, line_color=None, fill_color=colour, fill_alpha=alpha, radius=30)
+        print(hexStringColour)
+        self.bkplot.circle(es, ns, line_color=None, fill_color=hexStringColour, fill_alpha=alpha, radius=30)
 
-    def writeImageArrayToFileUsing(self, filename, img) :
+    def writeImageArrayToFile(self, filename, img) :
         print()
         print(f'*** Bokeh plotter save-to-file not implemented - use the CV2 plotter instead.')
-
+        #from bokeh.io import export_png
+        #print(f'Bokeh plot saving as file: {filename}')
+        #export_png(self.bkplot, filename=filename)
+        # Above fails reporting 
+        # RuntimeError: To use bokeh.io image export functions you need selenium ("conda install -c bokeh selenium" or "pip install selenium")
+        # So need to have selenium - provides a headless browser. Which may have other dependencies ?

@@ -188,18 +188,21 @@ class postcodesPlotter() :
         nsKey = -1
         areaKey = ''
 
-        for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
-            (es, ns, pc, area) = r
-            if index % (100000) == 0 :
-                print(index, es, ns, pc)
-            rgbColour = areaColourDict.get(area, self.pcDefaultColourRGB)
-            self._drawPostcode(index, es, ns, pc, area, rgbColour)
+        if self._useBulkProcessing() :
+            self._bulkProcess(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice[colouringColumn])
+        else :
+            for index, r in enumerate(zip(dfSlice['e_scaled'], dfSlice['n_scaled'], dfSlice['Postcode'], dfSlice[colouringColumn])):
+                (es, ns, pc, area) = r
+                if index % (100000) == 0 :
+                    print(index, es, ns, pc)
+                rgbColour = areaColourDict.get(area, self.pcDefaultColourRGB)
+                self._drawPostcode(index, es, ns, pc, area, rgbColour)
 
-            if keyPostcode != None and pc == keyPostcode :
-                esKey = es
-                nsKey = ns
-                areaKey = area
-                foundKey = True
+                if keyPostcode != None and pc == keyPostcode :
+                    esKey = es
+                    nsKey = ns
+                    areaKey = area
+                    foundKey = True
 
         # Show a specific postcode more prominently. ????
         if foundKey :
@@ -209,6 +212,9 @@ class postcodesPlotter() :
         self._displayPlot()
 
         return self._getImage()
+
+    def _useBulkProcessing(self) :
+        return False
 
     def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
         pass
@@ -381,6 +387,10 @@ class BokehPostcodesPlotter(postcodesPlotter) :
     # - about 1000 points perhaps 
     # - 9000 works but takes a minute or five (and .html takes ~30 seconds to display)
     # Can do a bulk plot using arrays ?
+    # - yes, much quicker, but without allowing for colouring - do we need an extra df column with the
+    #   colour-to-use in it ? NB This is calculated based on the area-type being coloured, so not fixed
+    #   for a particular postcode, it's context-specific.
+    #   NB html opens much more quickly too.
     # Option to save.
     # Interactivity options - panning ?
     # Draw a circle ?
@@ -409,9 +419,19 @@ class BokehPostcodesPlotter(postcodesPlotter) :
     def _getImage(self) :
         return None
 
+    def _useBulkProcessing(self) :
+        return True
+
     def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
         colour = self.rgbTupleToHexString(rgbColour)
         self.bkplot.circle(es, ns, line_color=colour, fill_color=colour, size=3)
+
+    def _bulkProcess(self, sE, sN, sColour) :
+        # Much faster, but how to apply colour ???? Presumably accepts an array too, but need to generate it.
+        # print(sColour.shape) # sColour contains the area codes to be coloured via dictionary lookup (and
+        # conversion to rgb string if lookup provides a tuple.)        
+        colour='red'
+        self.bkplot.circle(sE, sN, line_color=sColour, fill_color=colour, size=3)
 
     def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
 

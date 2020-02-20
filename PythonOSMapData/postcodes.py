@@ -781,7 +781,7 @@ def addStandardArgumentOptions(subparser) :
 
 def addPlotterArgumentOption(subparser) :
     '''Define a command line option to indicate which graphics plotter to use for map plots.'''
-    subparser.add_argument('-p', '--plotter', choices=['CV2', 'TK', 'Bokeh'], default='CV2', help='Plot using CV2 (OpenCV) or TK or Bokeh')
+    subparser.add_argument('-p', '--plotter', choices=['CV2', 'TK', 'Bokeh', 'Plotly'], default='CV2', help='Plot using CV2 (OpenCV) or TK or Bokeh')
 
 def processCommand(parsedArgs) :
     '''Use the arguments returned by argparse to work out which sub-command to perform, and perform it.

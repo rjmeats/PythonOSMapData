@@ -1,9 +1,11 @@
 import os
 
-from cv2 import cv2
-from tkinter import Tk, Canvas, mainloop
 import pandas as pd
 import numpy as np
+
+from cv2 import cv2
+from tkinter import Tk, Canvas, mainloop
+from bokeh.plotting import figure, output_file, show
 
 def getPlotter(plotter) :
     if plotter.upper() == 'CV2' :
@@ -12,6 +14,8 @@ def getPlotter(plotter) :
         return TKPostcodesPlotter()
     elif plotter.upper() == 'BOKEH' :
         return BokehPostcodesPlotter()
+    elif plotter.upper() == 'PLOTLY' :
+        return PlotlyPostcodesPlotter()
     else :
         print(f'*** Unknown plotter type: {plotter} - using CV2')
         return CV2PostcodesPlotter()
@@ -163,7 +167,8 @@ class postcodesPlotter() :
     def __init__(self) :
         pass
 
-    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
+    def _initialisePlot(self, dfSlice, title, canvasHeight, canvasWidth) :
+        self.dfSlice = dfSlice
         self.title = title
         self.canvasHeight = canvasHeight
         self.canvasWidth = canvasWidth
@@ -182,11 +187,10 @@ class postcodesPlotter() :
         colouringColumn = self.areaTypeToColumnName(colouringAreaType)
         areaColourNameDict, areaColourHexStringDict = self.assignAreasToColourGroups(dfSlice, colouringAreaType)
 
-
         dfSlice['rgbColour'] = dfSlice[colouringColumn].map(areaColourNameDict)
         dfSlice['hexColour'] = dfSlice[colouringColumn].map(areaColourHexStringDict)
 
-        self._initialisePlot(fullTitle, canvasHeight, canvasWidth)
+        self._initialisePlot(dfSlice, fullTitle, canvasHeight, canvasWidth)
         self.dfClickLookup = dfSlice
 
         foundKey = False
@@ -272,8 +276,8 @@ class TKPostcodesPlotter(postcodesPlotter) :
         print(f'obj={objID} : pc={pc}')
         print(pcinfo)
 
-    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
-        super()._initialisePlot(title, canvasHeight, canvasWidth)
+    def _initialisePlot(self, dfSlice, title, canvasHeight, canvasWidth) :
+        super()._initialisePlot(dfSlice, title, canvasHeight, canvasWidth)
         self.master = Tk()
         self.w = Canvas(self.master, width=canvasWidth, height=canvasHeight)
         self.master.title(title)
@@ -337,8 +341,8 @@ class CV2PostcodesPlotter(postcodesPlotter) :
                 print(f'index={index}')
                 print(pcinfo)
 
-    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
-        super()._initialisePlot(title, canvasHeight, canvasWidth)
+    def _initialisePlot(self, dfSlice, title, canvasHeight, canvasWidth) :
+        super()._initialisePlot(dfSlice, title, canvasHeight, canvasWidth)
         self.img = self.newImageArray(canvasHeight, canvasWidth)
         self.imgLookupIndex = np.full((canvasHeight+2, canvasWidth+2), 0, dtype='int32')   # +2s partly because of size of circle,
         # but also getting some out of bounds errors before [-1,0,1] adjustment was there - because ????
@@ -395,8 +399,6 @@ class CV2PostcodesPlotter(postcodesPlotter) :
 
 #############################################################################################
 
-from bokeh.plotting import figure, output_file, show
-
 class BokehPostcodesPlotter(postcodesPlotter) :
 
     # Bokeh point by point is slow! As is opening html file it produces.
@@ -427,8 +429,8 @@ class BokehPostcodesPlotter(postcodesPlotter) :
 
     # https://docs.bokeh.org/en/latest/docs/user_guide/quickstart.html#userguide-quickstart
 
-    def _initialisePlot(self, title, canvasHeight, canvasWidth) :
-        super()._initialisePlot(title, canvasHeight, canvasWidth)
+    def _initialisePlot(self, dfSlice, title, canvasHeight, canvasWidth) :
+        super()._initialisePlot(dfSlice, title, canvasHeight, canvasWidth)
 
         self.bkplot = figure(title=title, plot_height=canvasHeight, plot_width=canvasWidth, x_axis_label='E', y_axis_label='N')
 
@@ -452,7 +454,6 @@ class BokehPostcodesPlotter(postcodesPlotter) :
 
     def _highlightKeyPostcode(self, es, ns, pc, area, rgbTupleColour, hexStringColour) :
         alpha = 0.5
-        print(hexStringColour)
         self.bkplot.circle(es, ns, line_color=None, fill_color=hexStringColour, fill_alpha=alpha, radius=30)
 
     def writeImageArrayToFile(self, filename, img) :
@@ -464,3 +465,53 @@ class BokehPostcodesPlotter(postcodesPlotter) :
         # Above fails reporting 
         # RuntimeError: To use bokeh.io image export functions you need selenium ("conda install -c bokeh selenium" or "pip install selenium")
         # So need to have selenium - provides a headless browser. Which may have other dependencies ?
+
+
+#############################################################################################
+
+import plotly.express as px
+
+class PlotlyPostcodesPlotter(postcodesPlotter) :
+
+    # Works eventually for smaller postcodes, but scaled strangely (something to do with 'fixed ratio axes' ??). Scale changes as browser
+    # window is made smaller - square browser looks OKish.
+    # And tries to open a 127.0.0.1:<port> host in web page, which eventually fails.
+    # Something to do with dash ? Seems to be related to this https://community.plot.ly/t/plotly-doesnt-load-most-of-the-time/32095/10
+    # Trial only really.
+
+    def __init__(self) :
+        # Avoid is unsubscriptable error bodge for now.
+        super().__init__()
+
+    # https://docs.bokeh.org/en/latest/docs/user_guide/quickstart.html#userguide-quickstart
+
+    def _initialisePlot(self, dfSlice, title, canvasHeight, canvasWidth) :
+        super()._initialisePlot(dfSlice, title, canvasHeight, canvasWidth)
+
+        #self.bkplot = figure(title=title, plot_height=canvasHeight, plot_width=canvasWidth, x_axis_label='E', y_axis_label='N')
+
+    def _displayPlot(self) :
+        print()
+        print('.. displaying Plotly plot ..')
+        self.fig.show()
+        self.fig.write_html('plotly.html', auto_open=True)
+
+    def _getImage(self) :
+        return None
+
+    def _useBulkProcessing(self) :
+        return True
+
+    def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
+        pass
+
+    def _bulkProcess(self, sE, sN, sRGBTupleColour, sHexStringColour) :
+        self.fig = px.scatter(self.dfSlice, x=sE, y=sN, color=sHexStringColour)
+
+    def _highlightKeyPostcode(self, es, ns, pc, area, rgbTupleColour, hexStringColour) :
+        alpha = 0.5
+        
+    def writeImageArrayToFile(self, filename, img) :
+        print()
+        print(f'*** Plottly plotter save-to-file not implemented - use the CV2 plotter instead.')
+

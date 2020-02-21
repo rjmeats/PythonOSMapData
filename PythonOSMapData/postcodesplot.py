@@ -6,6 +6,7 @@ import numpy as np
 from cv2 import cv2
 from tkinter import Tk, Canvas, mainloop
 from bokeh.plotting import figure, output_file, show
+import plotly.express as px
 
 def getPlotter(plotter) :
     if plotter.upper() == 'CV2' :
@@ -108,7 +109,7 @@ class postcodesPlotter() :
         for index, (row) in enumerate(dfAreaExtents.iterrows()) :
             colourGroupsList[index % numGroups].append(row[0]) 
 
-        # Produce a dictionary to map each Postcode Area to its colour
+        # Produce a dictionary to map each Postcode Area to its colour, as a tuple and as a hex string
         dRGB = {}
         dHexString = {}
         for i in range(numGroups) :
@@ -468,8 +469,6 @@ class BokehPostcodesPlotter(postcodesPlotter) :
 
 
 #############################################################################################
-
-import plotly.express as px
 
 class PlotlyPostcodesPlotter(postcodesPlotter) :
 

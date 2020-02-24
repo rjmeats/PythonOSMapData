@@ -7,6 +7,7 @@ from cv2 import cv2
 from tkinter import Tk, Canvas, mainloop
 from bokeh.plotting import figure, output_file, show
 import plotly.express as px
+import plotly.graph_objects as go
 
 def getPlotter(plotter) :
     if plotter.upper() == 'CV2' :
@@ -508,7 +509,15 @@ class PlotlyPostcodesPlotter(postcodesPlotter) :
         self.fig = px.scatter(self.dfSlice, x=sE, y=sN, color=sHexStringColour)
 
     def _highlightKeyPostcode(self, es, ns, pc, area, rgbTupleColour, hexStringColour) :
-        alpha = 0.5
+        #alpha = 0.5
+        df = self.dfSlice[ self.dfSlice['Postcode'] == pc]
+        print(df)
+        # How to control the colour/alpha ?
+        self.fig.add_trace(go.Scatter(x=df['e_scaled'], y=df['n_scaled'], fillcolor='#ffff00', mode='markers', 
+                marker=dict(
+                color=hexStringColour,
+                size=40
+            )))
         
     def writeImageArrayToFile(self, filename, img) :
         print()

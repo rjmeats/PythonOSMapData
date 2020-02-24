@@ -475,7 +475,7 @@ class PlotlyPostcodesPlotter(postcodesPlotter) :
 
     # Works eventually for smaller postcodes, but scaled strangely (something to do with 'fixed ratio axes' ??). Scale changes as browser
     # window is made smaller - square browser looks OKish.
-    # And tries to open a 127.0.0.1:<port> host in web page, which eventually fails.
+    # And tries to open a 127.0.0.1:<port> host in web page, which eventually fails. (Occasionally it doesn't fail, and draws the image!)
     # Something to do with dash ? Seems to be related to this https://community.plot.ly/t/plotly-doesnt-load-most-of-the-time/32095/10
     # Trial only really.
 

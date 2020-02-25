@@ -488,8 +488,6 @@ class PlotlyPostcodesPlotter(postcodesPlotter) :
     def _initialisePlot(self, dfSlice, title, canvasHeight, canvasWidth) :
         super()._initialisePlot(dfSlice, title, canvasHeight, canvasWidth)
 
-        #self.bkplot = figure(title=title, plot_height=canvasHeight, plot_width=canvasWidth, x_axis_label='E', y_axis_label='N')
-
     def _displayPlot(self) :
         print()
         print('.. displaying Plotly plot ..')

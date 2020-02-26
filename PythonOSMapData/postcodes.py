@@ -568,46 +568,37 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
 
     return 0
 
-## to here.
+def getPostcodeLocationDesc(dfpc, verbose=False) :
+    '''Extract fields from a dataframe expected to containing a record for a single postcode, and use them to briefly describe its location.'''
 
-def getLocationDesc(dfpc, verbose=False) :
-    '''Extract fields from a dataframe containing a record for a single postcode to try and briefly describe its location.'''
-    ward = dfpc.reset_index().loc[0,'Ward Name']
-    district = dfpc.reset_index().loc[0,'District Name']
-    county = dfpc.reset_index().loc[0,'County Name']
-    country = dfpc.reset_index().loc[0,'Country Name']
+    df = dfpc.reset_index()
+    (ward, district, county, country) = df.loc[0, ['Ward Name', 'District Name', 'County Name', 'Country Name'] ]
 
     if pd.isnull(ward):     ward = ''
     if pd.isnull(district): district = ''
     if pd.isnull(county):   county = ''
     if pd.isnull(country):  country = ''
 
-    ward = ward.replace(' Ward', '')
-    ward = ward.replace(' ED', '')
-    district = district.replace(' (B)', '')
-    district = district.replace(' District', '')
-    district = district.replace(' London Borough', ', London')
+    # Tidy up some trailing words in some of the fields to make them more readable.
+    # Could do more here ...
+    ward = ward.replace(' Ward', '').replace(' ED', '')
+    district = district.replace(' (B)', '').replace(' District', '').replace(' London Borough', ', London')
 
-    desc = ''
-    if ward != '' :
-        desc = ward
+    # Accumulate a description from these fields.
+    desc = ward if ward != '' else '[No ward]'
     if district != '' :
         desc = f'{desc}, {district}'
     if county != '' :
         desc = f'{desc}, {county}'
 
-    # Why do we need to do the above syntax ????
-    #
-    # ward = dfpc['Ward Name']  - produces a dtype object, not useful
-    # e  = dfpc['Eastings'] - produces a dtype int64, can use in calculations (e.g. see below) - but is that luck
-
     if verbose:
+        print()
+        print('Location description generation:')
         print()
         print(dfpc)
         print()
-        print(f'ward = [{ward}], district = [{district}], county = [{county}], country = [{country}]')
-        print()
-        print(f'desc = [{desc}]')
+        print(f'- ward = [{ward}], district = [{district}], county = [{county}], country = [{country}]')
+        print(f'- location description = [{desc}]')
 
     return desc
 
@@ -634,7 +625,7 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
 
     # Remove postcodes not located in the square
     dfArea = restrictToGridRectangle(df, bottomLeft, topRight)
-    locationDesc = getLocationDesc(dfpc, verbose)
+    locationDesc = getPostcodeLocationDesc(dfpc, verbose)
 
     # Put a space in the formatted code if not present, before the 'inward' part.
     displayablePostcode = formattedPostcode.upper()

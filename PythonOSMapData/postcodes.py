@@ -193,7 +193,7 @@ def displayPostcodeInfo(df, postcode='NG2 6AG', verbose=False) :
     if orientation == 'Vertical' :
         # Print vertically, so all columns are listed on separate lines
         pd.set_option('display.max_rows', 100)                  # Allow for lots of fields
-        print(founddf.transpose(copy=True))
+        print(founddf.transpose())
     elif orientation == 'Horizontal' :
         # Print horizontally, no wrapping, just using the available space, omitting columns in the middle
         # if needed. (The default Pandas print formatting.)
@@ -463,16 +463,6 @@ def restrictToGridRectangle(df, bottomLeft, topRight) :
     dfArea = dfArea [ (dfArea['Northings'] >= bottomLeft[1]) & (dfArea['Northings'] <= topRight[1])]
     return dfArea
 
-# Get the town name associated with the postcode area, from the relevant column in the first row of the
-# filtered dataframe. Need to work on reset-index version of the dataframe (not saved) in order to be
-# able to use .loc to access the first row as index=0 - as dataframes are 'view' based, and so the 
-# index values (unique ID) comes from the underlying based dataframe, and so index=0 will not necessarily
-# be present in the view-based dataframe.
-def getPostTownOfFirstRow(df) :
-    '''Returns the post town value from the first row of the specified dataframe.'''
-    town = df.reset_index().loc[0,'Post Town']
-    return town
-
 def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
     '''Set up a plot of all postcodes in Great Britain.'''
 
@@ -488,13 +478,22 @@ def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
     img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType)
-    #img = pcplot.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, plotter=plotter)
     
     # Save the image in a file.
     if savefilelocation != None :
         plotterObject.writeImageArrayToFile(f'{savefilelocation}/postcodes.allGB.png', img)
 
     return 0
+
+# Get the town name associated with the postcode area, from the relevant column in the first row of the
+# filtered dataframe. Need to work on reset-index version of the dataframe (not saved) in order to be
+# able to use .loc to access the first row as index=0 - as dataframes are 'view' based, and so the 
+# index values (unique ID) comes from the underlying based dataframe, and so index=0 will not necessarily
+# be present in the view-based dataframe.
+def getPostTown(df) :
+    '''Returns the post town value from the first row of the specified dataframe.'''
+    town = df.reset_index().loc[0,'Post Town']
+    return town
 
 def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
     '''Set up a plot of the postcodes in the specified postcode area.'''
@@ -507,9 +506,7 @@ def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None
         return 1
 
     bottomLeft, topRight = getGridRange(dfArea, marginProportion=0.1, verbose=verbose)
-
-    town = getPostTownOfFirstRow(dfArea)
-    title = f'Postcode area {postcodeArea.upper()} [{town}]'
+    title = f'Postcode area {postcodeArea.upper()} [{getPostTown(dfArea)}]'
 
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
@@ -568,7 +565,7 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
 
     return 0
 
-def getPostcodeLocationDesc(dfpc, verbose=False) :
+def getPostcodeLocationDescription(dfpc, verbose=False) :
     '''Extract fields from a dataframe expected to containing a record for a single postcode, and use them to briefly describe its location.'''
 
     df = dfpc.reset_index()
@@ -613,6 +610,7 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
     elif dfpc.shape[0] != 1 :
         print(f'*** Unexpected dataframe size plotting Postcode {postcode} : {dfpc.shape[0]} instead of 1')
         return 1
+    locationDesc = getPostcodeLocationDescription(dfpc, verbose)
 
     # Get the coordindates of this postcode
     pcEasting  = dfpc['Eastings']   # ????
@@ -625,7 +623,6 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
 
     # Remove postcodes not located in the square
     dfArea = restrictToGridRectangle(df, bottomLeft, topRight)
-    locationDesc = getPostcodeLocationDesc(dfpc, verbose)
 
     # Put a space in the formatted code if not present, before the 'inward' part.
     displayablePostcode = formattedPostcode.upper()

@@ -440,8 +440,8 @@ def getGridRange(dfArea, marginProportion=0, verbose=False) :
     marginSize = int(max( (maxE - minE), (maxN - minN) ) * marginProportion)
 
     # And now produce the final bottom-left and top-right points including the margin.
-    bottomLeft =( minE-marginSize, minN-marginSize )
-    topRight   =( maxE+marginSize, maxN+marginSize )
+    bottomLeft = ( minE-marginSize, minN-marginSize )
+    topRight   = ( maxE+marginSize, maxN+marginSize )
 
     if verbose:
         print()

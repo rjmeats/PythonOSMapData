@@ -612,9 +612,10 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
         return 1
     locationDesc = getPostcodeLocationDescription(dfpc, verbose)
 
-    # Get the coordindates of this postcode
-    pcEasting  = dfpc['Eastings']   # ????
-    pcNorthing = dfpc['Northings']  # ????
+    # Get the coordindates of this postcode. .item() converts numpy int to normal Python int
+    dfpc = dfpc.reset_index()
+    pcEasting  = dfpc.loc[0, 'Eastings'].item()
+    pcNorthing = dfpc.loc[0, 'Northings'].item()
 
     # Calculate the NationalGrid coordindates of a square centred on our postcode of interest
     sqDimensions = 10 * 1000    # Metres

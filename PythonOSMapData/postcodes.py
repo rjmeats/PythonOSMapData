@@ -427,21 +427,21 @@ def getGridRange(dfArea, marginProportion=0, verbose=False) :
     #
     #(NB For reference, the Pandas syntax to get a single value from a dataframe is: minE = dfArea['Eastings'].min() )
 
-    agg = dfArea[['Eastings', 'Northings']].agg([min,max])
+    dfAgg = dfArea[['Eastings', 'Northings']].agg([min,max])
 
-    # Pull out the individual values
-    minE = agg.loc['min', 'Eastings']
-    maxE = agg.loc['max', 'Eastings']
-    minN = agg.loc['min', 'Northings']
-    maxN = agg.loc['max', 'Northings']
+    # Pull out the individual values, convert to normal Python ints using .item() - may not be really necessary.
+    minE = dfAgg.loc['min', 'Eastings'].item()
+    maxE = dfAgg.loc['max', 'Eastings'].item()
+    minN = dfAgg.loc['min', 'Northings'].item()
+    maxN = dfAgg.loc['max', 'Northings'].item()
 
     # Work out the size of the margin to add around the minimal rectangle. Use the same margin on all sides,
     # based on the largest dimension.
-    marginSize = max( (maxE - minE), (maxN - minN) ) * marginProportion
+    marginSize = int(max( (maxE - minE), (maxN - minN) ) * marginProportion)
 
     # And now produce the final bottom-left and top-right points including the margin.
-    bottomLeft =( int(minE-marginSize), int(minN-marginSize) )
-    topRight   =( int(maxE+marginSize), int(maxN+marginSize) )
+    bottomLeft =( minE-marginSize, minN-marginSize )
+    topRight   =( maxE+marginSize, maxN+marginSize )
 
     if verbose:
         print()

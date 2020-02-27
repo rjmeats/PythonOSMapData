@@ -678,10 +678,12 @@ def readCachedDataFrame(tmpDir=defaultTmpDir, cacheFile=None, verbose=False) :
     if cacheFile == None :
         cacheFile = getCacheFilePath(tmpDir)
     if os.path.isfile(cacheFile) :
+        startTime = pd.Timestamp.now()
         with open(cacheFile, 'rb') as f:
             print(f'Reading pre-existing dataframe from cache file {cacheFile} .. ', flush=True, end='')
             df = pickle.load(f)
-            print(f'done.')
+            took = pd.Timestamp.now()-startTime
+            print(f'done, took {int(took.total_seconds() * 1000)} milliseconds.')
     else :
         print(f'*** No cache file {cacheFile} found.')
         df = pd.DataFrame()

@@ -75,10 +75,11 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
     timeSoFar = pd.Timestamp.now()-t1
     print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
 
-    startTime = pd.Timestamp.now()
+    print(f'- deriving postcode components ..')
     dfDenormalised = addPostCodeBreakdown(dfDenormalised, verbose=verbose)
-    took = pd.Timestamp.now()-startTime
-    print(f'Took {took.total_seconds()} seconds to add postcode breakdown columns')
+    if dfDenormalised.empty :
+        return dfEmpty
+
     timeSoFar = pd.Timestamp.now()-t1
     print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
 
@@ -538,11 +539,20 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10,
     return dfJoin
 
 rowsProcessed = 0
-expectedPatterns = [
+xexpectedPatterns = [
     'X9##9XX',
     'X99#9XX',
     'X9X#9XX',
     'XX9#9XX',
+    'XX999XX',
+    'XX9X9XX'
+]
+
+expectedPatterns = [
+    'X9  9XX',
+    'X99 9XX',
+    'X9X 9XX',
+    'XX9 9XX',
     'XX999XX',
     'XX9X9XX'
 ]
@@ -612,15 +622,49 @@ def addPostCodeBreakdown(df, verbose=False) :
     # Look at each postcode and convert to a pattern, extract subcomponents of the postcode into separate columns
     # NB This takes a few minutes for the full set of rows.
 
-    dfBreakdown = df.copy()
-    rowsProcessed = 0
-    print()
-    print(f'Generating extra postcode columns ..')
-    extradf = dfBreakdown[['Postcode', 'Post Town', 'PostcodeArea']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
-    print(f'Concatenating extra postcode columns ..')
-    df = pd.concat([dfBreakdown, extradf], axis='columns')
-    print(f'.. extra postcode columns concatenated ..')
+    #dfBreakdown = df.copy()
+    #rowsProcessed = 0
+    # extradf = dfBreakdown[['Postcode', 'Post Town', 'PostcodeArea']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
 
+    dfBreakdown = df[['Postcode', 'PostcodeArea']].copy()
+
+    # Check patterns are as expected first.
+    dfBreakdown['Pattern']  = dfBreakdown['Postcode'].str.strip().str.replace(r'[0-9]', '9').str.replace(r'[A-Z]', 'X')
+    expectedPatterns = ['X9  9XX',
+                        'X99 9XX',
+                        'X9X 9XX',
+                        'XX9 9XX',
+                        'XX999XX',
+                        'XX9X9XX']
+    dfBadPattern = dfBreakdown [ dfBreakdown['Pattern'].isin(expectedPatterns) == False ]
+    if dfBadPattern.shape[0] != 0 :
+        print('** Unexpected pattern found in postcodes')
+        print(dfBadPattern)
+        return pd.DataFrame()
+
+    dfBreakdown['Inward']   = dfBreakdown['Postcode'].str[-3:].str.strip()
+    dfBreakdown['Outward']  = dfBreakdown['Postcode'].str[0:-3].str.strip()
+    dfBreakdown[['Area', 'District']]  = dfBreakdown['Outward'].str.extract(r'([A-Z][A-Z]?)([0-9].*)')
+
+    dfBadArea = dfBreakdown [ dfBreakdown.Area != dfBreakdown.PostcodeArea ]
+    if dfBadArea.shape[0] != 0 :
+        print('** Bad area extraction from postcode')
+        print(dfBadArea)
+        return pd.DataFrame()
+
+    dfBadDistrict = dfBreakdown[ dfBreakdown.Area + dfBreakdown.District != dfBreakdown.Outward ]
+    if dfBadDistrict.shape[0] != 0 :
+        print('** Bad district extraction from postcode')
+        print(dfBadDistrict)
+        return pd.DataFrame()
+
+    df[['Inward', 'Outward', 'Area', 'District', 'Pattern']] = dfBreakdown[['Inward', 'Outward', 'Area', 'District', 'Pattern']]
+
+    #print(f'Concatenating extra postcode columns ..')
+    #df = pd.concat([dfBreakdown, extradf], axis='columns')
+    #print(f'.. extra postcode columns concatenated ..')
+
+    # This is more like data examination than useful processing info. Do some other way.
     if verbose :
         print()
         print(f'.. Postcodes grouped by pattern ..')

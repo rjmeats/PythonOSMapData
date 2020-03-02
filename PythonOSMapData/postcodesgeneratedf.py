@@ -1,33 +1,202 @@
-import os
-import sys
+'''
+Functions to generate a Pandas dataframe from Ordnance Survey 'Open Codepoint' postcodes data. 
 
-import zipfile
-import pandas as pd
+The entry point for external use is:
 
-"""
+    generateDataFrameFromSourceData
+
+References:
+
+https://www.ordnancesurvey.co.uk/business-government/tools-support/code-point-open-support
 https://en.wikipedia.org/wiki/List_of_postcode_districts_in_the_United_Kingdom
 https://en.wikipedia.org/wiki/List_of_postcode_areas_in_the_United_Kingdom
 https://geoportal.statistics.gov.uk/datasets/ons-postcode-directory-november-2019
-"""
 
-def unpackZipFile(OSZipFile, tmpDir, detail=False) :
+'''
+
+import os
+import sys
+import zipfile
+
+import pandas as pd
+
+#############################################################################################
+
+def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
+    ''' Top-level function to generate a dataframe of Postcode data from raw data files, returning the dataframe.
+        Returns an empty dataframe if a problem is detected during processing.
+
+        dataDir is the location which should hold the following datafiles:
+        - codepo_gb.zip                      
+          - the zipped set of files provided by the OS
+          - available via https://www.ordnancesurvey.co.uk/opendatadownload/products.html
+        - postcode_district_area_lists.xls   
+          - an Excel file converting Postcode area labels to 'Post Towns'
+          - from https://www.postcodeaddressfile.co.uk/downloads/html_pages/download_postcode_areas_districts.htm
+
+        tmpDir is a location which can be used to unpack the zip file                                        
+    '''
+
+    t1 = pd.Timestamp.now()
+    dfEmpty = pd.DataFrame()        # Returned if we detected a problem
+
+    print(f'Generating postcode DataFrame from data files in {dataDir}..')
+
+    OSZipFile = dataDir + "/" + "codepo_gb.zip"
+    postcodeAreasFile = dataDir + "/" + "postcode_district_area_lists.xls"
+
+    print(f'- preparing files ..')
+    success = prepareFiles(OSZipFile, postcodeAreasFile, tmpDir, verbose)
+    if not success :
+        return dfEmpty
+    timeSoFar = pd.Timestamp.now()-t1
+    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+
+    print(f'- loading code lookup data ..')
+    success, dictLookupdf = loadLookups(postcodeAreasFile, tmpDir, verbose)
+    if not success :
+        return dfEmpty
+    timeSoFar = pd.Timestamp.now()-t1
+    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+
+    print(f'- loading raw postcode data files ..')
+    startTime = pd.Timestamp.now()
+    df = loadFilesIntoDataFrame(tmpDir)
+    took = pd.Timestamp.now()-startTime
+    if not df.empty :
+        print(f'- took {took.total_seconds()} seconds to load raw data files')
+        timeSoFar = pd.Timestamp.now()-t1
+        print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+    else :
+        return dfEmpty
+
+    print(f'- adding code lookups ..')
+    dfDenormalised = addCodeLookupColumns(df, dictLookupdf, verbose) 
+    timeSoFar = pd.Timestamp.now()-t1
+    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+
+    startTime = pd.Timestamp.now()
+    dfDenormalised = addPostCodeBreakdown(dfDenormalised, verbose=verbose)
+    took = pd.Timestamp.now()-startTime
+    print(f'Took {took.total_seconds()} seconds to add postcode breakdown columns')
+    timeSoFar = pd.Timestamp.now()-t1
+    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+
+    examineLocationColumns(dfDenormalised, verbose=verbose)
+
+    useCategoricals = True
+    if useCategoricals :
+        print('Converting columns to categoricals ...')
+        catCols = ['PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code',
+                    'Admin_ward_code', 'Post Town', 'Country Name', 'County Name',
+                    'District Name', 'Ward Name', 'Pattern', 'Outward', 'District', 'Inward']
+        dfDenormalised[catCols] = dfDenormalised[catCols].astype('category')
+
+    took = pd.Timestamp.now()-t1
+    print()
+    print('Postcode DataFrame generation from source data files finished.')
+    print(f'- took {took.total_seconds():.2f} seconds')
+
+    return dfDenormalised
+
+def prepareFiles(OSZipFile, postcodeAreasFile, tmpDir, verbose=False) :
+
+    if not os.path.isfile(OSZipFile) :
+        print("*** No OS zip file found:", OSZipFile)
+        return False
+
+    if not os.path.isfile(postcodeAreasFile) :
+        print("*** No ONS postcode areas spreadsheet file found:", postcodeAreasFile)
+        return False
+
+    if not unpackZipFile(OSZipFile, tmpDir, verbose) :
+        return False
+
+    return True
+
+def unpackZipFile(OSZipFile, tmpDir, verbose=False) :
     """ Unzips the data file under a temporary directory. Checks basic sub-directories are as expected."""
     z = zipfile.ZipFile(OSZipFile, mode='r')
 
     zinfolist = z.infolist()
     for zinfo in zinfolist :
         if zinfo.filename.startswith('Data/') or zinfo.filename.startswith('Doc/') :
-            if detail: print(zinfo.filename)
+            if verbose: 
+                print(zinfo.filename)
         else :
             print("*** Unexpected extract location found:", zinfo.filename, file=sys.stderr)
+            return False
 
-    print()
-    print(f'Extracting zip file {OSZipFile} under {tmpDir} ...')
+    print(f'.. extracting zip file {OSZipFile} under {tmpDir} ...')
     z.extractall(path=tmpDir)
     z.close()
 
+    return True
+
+def loadLookups(postcodeAreasFile, tmpDir, verbose=True) :
+
+    status = True
+    dictLookupdf = {}
+
+    dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
+    dictLookupdf['Areas'] = dfAreas
+    if dfAreas.empty :
+        status = False
+
+    dfCountries = loadCountryCodes()
+    dictLookupdf['Countries'] = dfCountries
+    if dfCountries.empty :
+        status = False
+
+    dfCounties = loadCountyCodes(tmpDir)
+    dictLookupdf['Counties'] = dfCounties
+    if dfCounties.empty :
+        status = False
+
+    dfDistricts = loadDistrictCodes(tmpDir)
+    dictLookupdf['Districts'] = dfDistricts
+    if dfDistricts.empty :
+        status = False
+
+    dfWards = loadWardCodes(tmpDir)
+    dictLookupdf['Wards'] = dfWards
+    if dfWards.empty :
+        status = False
+
+    return status, dictLookupdf
+
+def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
+
+    # Add further columns showing looked-up values of the various code columns, checking referential
+    # itegrity and null-ness at the same time.
+    dfDenormalised = df
+    areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Areas'], areasParameters, 150, verbose=verbose)
+
+    countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Countries'], countriesParameters, 10, verbose=verbose)
+
+    countiesParameters = ('County Codes', 'Postcode', 'Admin_county_code', 'County Code','County Name')
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Counties'], countiesParameters, 50, verbose=verbose)
+
+    districtsParameters = ('District Codes', 'Postcode', 'Admin_district_code', 'District Code','District Name')
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Districts'], districtsParameters, 20, verbose=verbose)
+
+    wardsParameters = ('Ward Codes', 'Postcode', 'Admin_ward_code', 'Ward Code','Ward Name')
+    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Wards'], wardsParameters, 20, verbose=verbose)
+
+    # Prune the column list - the above will have added an extra copy of each 'code' column that we can
+    # remove again. Just use the original columns in the dataframe and the main lookup columns added.
+    
+    fullOutputColumns = (list(df.columns)).copy()
+    fullOutputColumns.extend(['Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name'])
+    dfDenormalised = dfDenormalised[fullOutputColumns]
+
+    return dfDenormalised
+
+
 #############################################################################################
-# Items relating to the columns of in the main CSV file and resulting dataframe
+# Items relating to the columns in the main CSV file and resulting dataframe
 
 # Column names are provided in a separate file, with two lines - we expect the values below in these lines
 csvColumnNamesFile = 'Doc/Code-Point_Open_Column_Headers.csv'
@@ -76,7 +245,7 @@ def checkColumns(tmpDir, detail=False) :
                 print(f"*** Columns definition file {csvColumnNamesFile} line 2 not as expected: {line2}", file=sys.stderr)
             else :
                 columnsOK = True
-                print(f"Columns definition file {csvColumnNamesFile} has the expected columns ...")
+                print(f".. columns definition file {csvColumnNamesFile} has the expected columns ...")
 
     return columnsOK
 
@@ -96,7 +265,7 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
         print(f'*** No {mainCSVDataDir} directory found under: {mainDataDir}', file=sys.stderr)
         return pd.DataFrame()
     matchingFilenames = [entry.name for entry in os.scandir(mainDataDir) if entry.is_file() and entry.name.endswith('.csv')]
-    print(f'Found {len(matchingFilenames)} CSV files to process ...')
+    print(f'.. found {len(matchingFilenames)} CSV files to process ...')
 
     # Build up a list of dataframes, one per CSV file, with the set of desired output column names.
     # There is one CSV file for each postcode area, with the filled called xx.csv where xx is the postcode area (in lower case).
@@ -159,7 +328,6 @@ def loadPostcodeAreasFile(postcodeAreasFile) :
 
     # NB Needed to 'pip install xlrd' for this to work.
     dfAreas = pd.read_excel(postcodeAreasFile, sheet_name='Postcode Areas', header=0)
-    print()
     print(f'.. found {dfAreas.shape[0]} postcode areas in the areas spreadsheet')
 
     # Check the columns are what we expect:
@@ -187,7 +355,6 @@ def loadCountyCodes(tmpDir) :
     # NB Needed to 'pip install xlrd' for this to work.
     dfCountyCodes = pd.read_excel(codeslistFile, sheet_name='CTY', header=None, names=['County Name', 'County Code'])
     
-    print()
     print(f'.. found {dfCountyCodes.shape[0]} county codes in the code list spreadsheet')
 
     # Remove the word 'County' from the end of the name, e.g. 'Essex County' => 'Essex'
@@ -215,7 +382,6 @@ def loadDistrictCodes(tmpDir) :
     dfDistrictCodes3 = pd.read_excel(codeslistFile, sheet_name='UTA', header=None, names=['District Name', 'District Code'])
     dfDistrictCodes4 = pd.read_excel(codeslistFile, sheet_name='LBO', header=None, names=['District Name', 'District Code'])
     
-    print()
     print(f'.. found {dfDistrictCodes1.shape[0]} DIS district codes in the code list spreadsheet')
     print(f'.. found {dfDistrictCodes2.shape[0]} MTD district codes in the code list spreadsheet')
     print(f'.. found {dfDistrictCodes3.shape[0]} UTA district codes in the code list spreadsheet')
@@ -245,7 +411,6 @@ def loadWardCodes(tmpDir) :
     dfWardCodes4 = pd.read_excel(codeslistFile, sheet_name='LBW', header=None, names=['Ward Name', 'Ward Code'])
     dfWardCodes5 = pd.read_excel(codeslistFile, sheet_name='MTW', header=None, names=['Ward Name', 'Ward Code'])
     
-    print()
     print(f'.. found {dfWardCodes1.shape[0]} UTW ward codes in the code list spreadsheet')
     print(f'.. found {dfWardCodes2.shape[0]} UTE ward codes in the code list spreadsheet')
     print(f'.. found {dfWardCodes3.shape[0]} DIW ward codes in the code list spreadsheet')
@@ -399,7 +564,7 @@ def getPattern(row) :
 
     pattern = pcDigitPattern.sub('9', pc)
     pattern = pcLetterPattern.sub('X', pattern)
-    pattern = pcSpacePattern.sub('#', pattern)
+    pattern = pcSpacePattern.sub('#', pattern)          # dfpc['Postcode'].str.strip().str.replace(r'[0-9]', '9').str.replace(r'[A-Z]', 'X').str.replace(r'\s', '#')
 
     # Overall pattern should be one of 6 known ones
     
@@ -410,10 +575,10 @@ def getPattern(row) :
     # outward = the rest
     # outward part from the first digit onwards = district
     # remainder of outward part is the area code, and should match the value already provded
-    inward = pc[-3:].strip()    
-    outward = pc[0:-3].strip()
-    district = ''
-    a = ''
+    inward = pc[-3:].strip()            # dfpc['Postcode'].str[-3:].str.strip()
+    outward = pc[0:-3].strip()          # dfpc['Postcode'].str[0:-3].str.strip()
+    district = ''                       # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[A-Z]', '')
+    a = ''                              # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[0-9]', '')
     for i, c in enumerate(outward) :
         if c.isdigit() :
             district = outward[i:]
@@ -476,6 +641,57 @@ def addPostCodeBreakdown(df, verbose=False) :
 
     return df
 
+#############################################################################################
+
+def displayBasicDataFrameInfo(df, verbose=False) :
+    """ See what some basic pandas info calls show about the dataframe. """
+
+    print()
+    print('###################################################')
+    print('################## type and shape #################')
+    print()
+    print(f'type(df) = {type(df)} : df.shape : {df.shape}') 
+    print()
+    print('################## print(df) #####################')
+    print()
+    print(df)
+    print()
+    print('################## df.dtypes ##################')
+    print()
+    print(df.dtypes)
+    print()
+    print('################## df.info() ##################')
+    print()
+    print(df.info())
+    print()
+    print('################## df.head() ##################')
+    print()
+    print(df.head())
+    print()
+    print('################## df.tail() ##################')
+    print()
+    print(df.tail())
+    print()
+    print('################## df.index ##################')
+    print()
+    print(df.index)
+    print()
+    print('################## df.columns ##################')
+    print()
+    print(df.columns)
+    print()
+    print('################## df.describe() ##################')
+    print()
+    print(df.describe())
+    print()
+    print('################## df.count() ##################')
+    print()
+    print(df.count())
+    print()
+    print('###################################################')
+
+    return 0
+
 # Code point Open User Guide explains the Quality values as follows:
 # https://www.ordnancesurvey.co.uk/documents/product-support/user-guide/code-point-open-user-guide.pdf
 # 
@@ -528,142 +744,3 @@ def examineLocationColumns(df, verbose=False) :
     print()
     print(df[ df['Quality'] == 90][0:10])
 
-def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
-
-    OSZipFile = dataDir + "/" + "codepo_gb.zip"
-    postcodeAreasFile = dataDir + "/" + "postcode_district_area_lists.xls"
-
-    print('Generating postcode DataFrame from source data files ..')
-
-    dfEmpty = pd.DataFrame()
-
-    if not os.path.isfile(OSZipFile) :
-        print("*** No OS zip file found:", OSZipFile, file=sys.stderr)
-        return dfEmpty
-
-    if not os.path.isfile(postcodeAreasFile) :
-        print("*** No ONS postcode areas spreadsheet file found:", postcodeAreasFile, file=sys.stderr)
-        return dfEmpty
-
-    print()
-    print('Loading code lookup data ..')
-
-    dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
-    if dfAreas.empty :
-        return dfEmpty
-
-    dfCountries = loadCountryCodes()
-    if dfCountries.empty :
-        return dfEmpty
-
-    dfCounties = loadCountyCodes(tmpDir)
-    if dfCounties.empty :
-        return dfEmpty
-
-    dfDistricts = loadDistrictCodes(tmpDir)
-    if dfDistricts.empty :
-        return dfEmpty
-
-    dfWards = loadWardCodes(tmpDir)
-    if dfWards.empty :
-        return dfEmpty
-
-    unpackZipFile(OSZipFile, tmpDir)
-
-    startTime = pd.Timestamp.now()
-    df = loadFilesIntoDataFrame(tmpDir)
-    took = pd.Timestamp.now()-startTime
-    if not df.empty :
-        print(f'Took {took.total_seconds()} seconds to load data files into a dataframe')
-    else :
-        return dfEmpty
-
-    #displayBasicInfo(df)
-
-    # Add further columns showing looked-up values of the various code columns, checking referential
-    # itegrity and null-ness at the same time.
-    dfDenormalised = df
-    areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfAreas, areasParameters, 150, verbose=verbose)
-
-    countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCountries, countriesParameters, 10, verbose=verbose)
-
-    countiesParameters = ('County Codes', 'Postcode', 'Admin_county_code', 'County Code','County Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfCounties, countiesParameters, 50, verbose=verbose)
-
-    districtsParameters = ('District Codes', 'Postcode', 'Admin_district_code', 'District Code','District Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfDistricts, districtsParameters, 20, verbose=verbose)
-
-    wardsParameters = ('Ward Codes', 'Postcode', 'Admin_ward_code', 'Ward Code','Ward Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dfWards, wardsParameters, 20, verbose=verbose)
-
-    # Prune the column list - the above will have added an extra copy of each 'code' column that we can
-    # remove again. Just use the original columns in the dataframe and the main lookup columns added.
-    
-    fullOutputColumns = (list(df.columns)).copy()
-    fullOutputColumns.extend(['Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name'])
-    dfDenormalised = dfDenormalised[fullOutputColumns]
-
-    startTime = pd.Timestamp.now()
-    dfDenormalised = addPostCodeBreakdown(dfDenormalised, verbose=verbose)
-    took = pd.Timestamp.now()-startTime
-    print(f'Took {took.total_seconds()} seconds to add postcode breakdown columns')
-
-    examineLocationColumns(dfDenormalised, verbose=verbose)
-
-    print()
-    print('Postcode DataFrame generation from source data files finished.')
-
-    return dfDenormalised
-
-#############################################################################################
-
-def displayBasicDataFrameInfo(df, verbose=False) :
-    """ See what the basic pandas info calls show about the dataframe. """
-
-    print()
-    print('###################################################')
-    print('################## type and shape #################')
-    print()
-    print(f'type(df) = {type(df)} : df.shape : {df.shape}') 
-    print()
-    print('################## print(df) #####################')
-    print()
-    print(df)
-    print()
-    print('################## df.dtypes ##################')
-    print()
-    print(df.dtypes)
-    print()
-    print('################## df.info() ##################')
-    print()
-    print(df.info())
-    print()
-    print('################## df.head() ##################')
-    print()
-    print(df.head())
-    print()
-    print('################## df.tail() ##################')
-    print()
-    print(df.tail())
-    print()
-    print('################## df.index ##################')
-    print()
-    print(df.index)
-    print()
-    print('################## df.columns ##################')
-    print()
-    print(df.columns)
-    print()
-    print('################## df.describe() ##################')
-    print()
-    print(df.describe())
-    print()
-    print('################## df.count() ##################')
-    print()
-    print(df.count())
-    print()
-    print('###################################################')
-
-    return 0

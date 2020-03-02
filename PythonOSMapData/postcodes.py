@@ -1,12 +1,3 @@
-import os
-import sys
-import zipfile
-import pickle
-import argparse
-import random
-
-import pandas as pd
-
 '''
 Python utility to process Ordnance Survey 'OS Code-Point Open' postcode data for Great Britain.
 Data is loaded into a Pandas dataframe from OS source data files, and the dataframe can then
@@ -17,6 +8,14 @@ be processed in various ways:
 - to show aggregate statistics about postcodes
 The utility runs as a command-line program from the main() function at the bottom of this module.
 '''
+
+import os
+import sys
+import zipfile
+import pickle
+import argparse
+import random
+import pandas as pd
 
 # Local Python files to import
 import postcodesgeneratedf as pcgen     # To populate a dataframe from source data files
@@ -671,7 +670,7 @@ def getCacheFilePath(tmpDir=defaultTmpDir) :
     return tmpDir + '/cached/df.cache'
 
 def readCachedDataFrame(tmpDir=defaultTmpDir, cacheFile=None, verbose=False) :
-    '''Read the cached dataframe pickle file back into a dataframe.
+    '''Read the cached dataframe pickle file back into a dataframe, and return the dataframe.
        The default file location can be overridden by the caller.
        Returns an empty dataframe if the file cannot be found.
     '''

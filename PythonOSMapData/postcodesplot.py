@@ -35,6 +35,8 @@ class postcodesPlotter() :
             areaTypeColumn = 'Ward Name'
         elif areaType.lower() == 'pc' :
             areaTypeColumn = 'Postcode'
+        elif areaType.lower() == 'cr' :
+            areaTypeColumn = 'Country_code'
         else :
             print(f'*** Unrecognised areaType {areaType} when converting to a column name.')
             areaTypeColumn = 'PostcodeArea'
@@ -186,11 +188,28 @@ class postcodesPlotter() :
         fullTitle = dimensions if title == None else f'{title} : {dimensions}'
 
         canvasHeight, canvasWidth, dfSlice = self.getScaledPlot(df, canvasHeight, bottomLeft, topRight, density)
+        #colouringAreaType = 'cr'
         colouringColumn = self.areaTypeToColumnName(colouringAreaType)
         areaColourNameDict, areaColourHexStringDict = self.assignAreasToColourGroups(dfSlice, colouringAreaType)
 
-        dfSlice['rgbColour'] = dfSlice[colouringColumn].map(areaColourNameDict)
+        #print(colouringColumn)
+        #print(areaColourNameDict)
+        #areaColourNameDict = {}
+        #areaColourNameDict = {'E92000001': (255, 127, 127), 'S92000003': (127, 127, 255), 'W92000004': (127, 255, 127)}
+        #areaColourNameDict = {'E92000001': 'red', 'S92000003': 'blue', 'W92000004': 'yellow'}
+
+        #egColour = areaColourNameDict['E92000001']
+        #print(f'egColour: {egColour}')
+
+        #print(dfSlice.index)
+        #print(dfSlice)
+
+        #dfSlice['rgbColour'] = dfSlice[colouringColumn].map(areaColourNameDict)
+        #mapTupleLambda = lambda c : areaColourNameDict[c]
+        #dfSlice['rgbColour'] = dfSlice[colouringColumn].map(mapTupleLambda)
         dfSlice['hexColour'] = dfSlice[colouringColumn].map(areaColourHexStringDict)
+
+        #print(dfSlice)
 
         self._initialisePlot(dfSlice, fullTitle, canvasHeight, canvasWidth)
         self.dfClickLookup = dfSlice
@@ -298,7 +317,7 @@ class TKPostcodesPlotter(postcodesPlotter) :
         #print(f'Adding objid: {objid}')
         self.tkObjDict[objid] = pc
 
-    def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour) :
+    def _highlightKeyPostcode(self, es, ns, pc, area, rgbColour, hexColour) :
         pass
 
     def writeImageArrayToFile(self, filename, img) :

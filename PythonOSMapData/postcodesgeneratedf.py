@@ -60,45 +60,49 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
     print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
 
     print(f'- loading raw postcode data files ..')
-    startTime = pd.Timestamp.now()
     df = loadFilesIntoDataFrame(tmpDir)
-    took = pd.Timestamp.now()-startTime
     if not df.empty :
-        print(f'- took {took.total_seconds()} seconds to load raw data files')
         timeSoFar = pd.Timestamp.now()-t1
         print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
     else :
         return dfEmpty
 
+    # Doing this here gets lost later ????
+    # merge loses categoricals https://github.com/pandas-dev/pandas/issues/10409 ?
+    #catCols = ['PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
+    #df[catCols] = df[catCols].astype('category')
+
     print(f'- adding code lookups ..')
-    dfDenormalised = addCodeLookupColumns(df, dictLookupdf, verbose) 
+    df = addCodeLookupColumns(df, dictLookupdf, verbose) 
     timeSoFar = pd.Timestamp.now()-t1
     print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+
+    # Why need to redo ?
+    catCols = ['PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
+    df[catCols] = df[catCols].astype('category')
+    catCols = [ 'Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name']
+    df[catCols] = df[catCols].astype('category')
 
     print(f'- deriving postcode components ..')
-    dfDenormalised = addPostCodeBreakdown(dfDenormalised, verbose=verbose)
-    if dfDenormalised.empty :
+    df = addPostCodeBreakdown(df, verbose=verbose)
+    if df.empty :
         return dfEmpty
-
     timeSoFar = pd.Timestamp.now()-t1
     print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
 
-    examineLocationColumns(dfDenormalised, verbose=verbose)
+    print('- converting dimension columns to categoricals ..')
+    # ???? Do this as we go along ????
+    catCols = [ #'PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code', 
+                #'Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name', 
+                'Pattern', 'Outward', 'District', 'Inward']
+    df[catCols] = df[catCols].astype('category')
 
-    useCategoricals = True
-    if useCategoricals :
-        print('Converting columns to categoricals ...')
-        catCols = ['PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code',
-                    'Admin_ward_code', 'Post Town', 'Country Name', 'County Name',
-                    'District Name', 'Ward Name', 'Pattern', 'Outward', 'District', 'Inward']
-        dfDenormalised[catCols] = dfDenormalised[catCols].astype('category')
-
-    took = pd.Timestamp.now()-t1
+    timeSoFar = pd.Timestamp.now()-t1
     print()
     print('Postcode DataFrame generation from source data files finished.')
-    print(f'- took {took.total_seconds():.2f} seconds')
+    print(f'- time taken : {timeSoFar.total_seconds():.2f} seconds')
 
-    return dfDenormalised
+    return df
 
 def prepareFiles(OSZipFile, postcodeAreasFile, tmpDir, verbose=False) :
 
@@ -538,97 +542,14 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10,
 
     return dfJoin
 
-rowsProcessed = 0
-xexpectedPatterns = [
-    'X9##9XX',
-    'X99#9XX',
-    'X9X#9XX',
-    'XX9#9XX',
-    'XX999XX',
-    'XX9X9XX'
-]
-
-expectedPatterns = [
-    'X9  9XX',
-    'X99 9XX',
-    'X9X 9XX',
-    'XX9 9XX',
-    'XX999XX',
-    'XX9X9XX'
-]
-
-import re
-pcDigitPattern = re.compile('[0-9]')
-pcLetterPattern = re.compile('[A-Z]')
-pcSpacePattern = re.compile(r'\s')
-
-# Can this be done using the replace(re)/extract(re) string operation on a column ? https://pandas.pydata.org/pandas-docs/stable/user_guide/text.html
-# Might be much faster.
-def getPattern(row) :
-
-    global rowsProcessed
-
-    # print(row)
-    pc = row['Postcode']
-    area = row['PostcodeArea']
-
-    pattern = pcDigitPattern.sub('9', pc)
-    pattern = pcLetterPattern.sub('X', pattern)
-    pattern = pcSpacePattern.sub('#', pattern)          # dfpc['Postcode'].str.strip().str.replace(r'[0-9]', '9').str.replace(r'[A-Z]', 'X').str.replace(r'\s', '#')
-
-    # Overall pattern should be one of 6 known ones
-    
-    if pattern not in expectedPatterns :
-        print(f'*** unexpected pattern for {pc} : {pattern}')
-
-    # inward = last three digits
-    # outward = the rest
-    # outward part from the first digit onwards = district
-    # remainder of outward part is the area code, and should match the value already provded
-    inward = pc[-3:].strip()            # dfpc['Postcode'].str[-3:].str.strip()
-    outward = pc[0:-3].strip()          # dfpc['Postcode'].str[0:-3].str.strip()
-    district = ''                       # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[A-Z]', '')
-    a = ''                              # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[0-9]', '')
-    for i, c in enumerate(outward) :
-        if c.isdigit() :
-            district = outward[i:]
-            break
-        else :
-            a += c
-
-    if a != area :
-        print(f'*** area != area for {pc} : {a} : {area}')
-
-    rowsProcessed += 1
-    if rowsProcessed % 100000 == 0 :
-        print(f'.. processed {rowsProcessed} postcode patterns ..')
-    return { 'Pattern' : pattern, 'Outward' : outward, 'District' : district, 'Inward' : inward }
-
-"""
-         Postcode
-New
-X9##9XX     44363
-X99#9XX    156642
-X9X#9XX      9511
-XX9#9XX    683419
-XX999XX    797826
-XX9X9XX     10728
-"""
 
 def addPostCodeBreakdown(df, verbose=False) :
 
-    global rowsProcessed
-
-    # Look at each postcode and convert to a pattern, extract subcomponents of the postcode into separate columns
-    # NB This takes a few minutes for the full set of rows.
-
-    #dfBreakdown = df.copy()
-    #rowsProcessed = 0
-    # extradf = dfBreakdown[['Postcode', 'Post Town', 'PostcodeArea']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
-
     dfBreakdown = df[['Postcode', 'PostcodeArea']].copy()
 
-    # Check patterns are as expected first.
+    # First check that the postcode patterns present are the ones we expected.
+    # In every case, the 'Inward' part consists of the last three characters (9XX), with the 'Outward' part
+    # being the part before this.
     dfBreakdown['Pattern']  = dfBreakdown['Postcode'].str.strip().str.replace(r'[0-9]', '9').str.replace(r'[A-Z]', 'X')
     expectedPatterns = ['X9  9XX',
                         'X99 9XX',
@@ -642,6 +563,8 @@ def addPostCodeBreakdown(df, verbose=False) :
         print(dfBadPattern)
         return pd.DataFrame()
 
+    # Split the postcode into Inward, Outward, and splot the Outward into Area and District.
+    # NB Some Districts can include letters, e.g. E1W.
     dfBreakdown['Inward']   = dfBreakdown['Postcode'].str[-3:].str.strip()
     dfBreakdown['Outward']  = dfBreakdown['Postcode'].str[0:-3].str.strip()
     dfBreakdown[['Area', 'District']]  = dfBreakdown['Outward'].str.extract(r'([A-Z][A-Z]?)([0-9].*)')
@@ -658,12 +581,16 @@ def addPostCodeBreakdown(df, verbose=False) :
         print(dfBadDistrict)
         return pd.DataFrame()
 
-    df[['Inward', 'Outward', 'Area', 'District', 'Pattern']] = dfBreakdown[['Inward', 'Outward', 'Area', 'District', 'Pattern']]
+    df[['Inward', 'Outward', 'District', 'Pattern']] = dfBreakdown[['Inward', 'Outward', 'District', 'Pattern']]
 
-    #print(f'Concatenating extra postcode columns ..')
-    #df = pd.concat([dfBreakdown, extradf], axis='columns')
-    #print(f'.. extra postcode columns concatenated ..')
+    return df
 
+#############################################################################################
+#############################################################################################
+#############################################################################################
+
+# Pulled out of addPostcodeBreakdown - should be part of some sort of analysis option.
+def examinePostcodePatterns(df, verbose=True) :
     # This is more like data examination than useful processing info. Do some other way.
     if verbose :
         print()
@@ -682,8 +609,6 @@ def addPostCodeBreakdown(df, verbose=False) :
             dfG = df[['Postcode', 'PostcodeArea', 'Post Town', 'Outward']].groupby(['PostcodeArea', 'Post Town'], as_index=True)['Outward'].nunique()
             print()
             print(dfG)
-
-    return df
 
 #############################################################################################
 
@@ -755,7 +680,7 @@ def displayBasicDataFrameInfo(df, verbose=False) :
 # No cases of 40 were present in the data.
 # Nearly all data is assigned as 10, with a small amount of 50 and 90, and traces of 20,30,60
 
-
+# Perhaps redo this as a check of expectations rather than a report. (Or have a separate report.)
 def examineLocationColumns(df, verbose=False) :
 
     if not verbose :
@@ -788,3 +713,84 @@ def examineLocationColumns(df, verbose=False) :
     print()
     print(df[ df['Quality'] == 90][0:10])
 
+
+r"""
+# Original code for breaking down / analysing postcode values, using .apply
+# (which invokes getPattern for every row).
+# Runs very slowly compared to replacement code operating at column-level via '.str'
+# functions.
+
+rowsProcessed = 0
+xexpectedPatterns = [
+    'X9##9XX',
+    'X99#9XX',
+    'X9X#9XX',
+    'XX9#9XX',
+    'XX999XX',
+    'XX9X9XX'
+]
+
+import re
+pcDigitPattern = re.compile('[0-9]')
+pcLetterPattern = re.compile('[A-Z]')
+pcSpacePattern = re.compile(r'\s')
+
+# Can this be done using the replace(re)/extract(re) string operation on a column ? https://pandas.pydata.org/pandas-docs/stable/user_guide/text.html
+# Might be much faster.
+def getPattern(row) :
+
+    global rowsProcessed
+
+    # print(row)
+    pc = row['Postcode']
+    area = row['PostcodeArea']
+
+    pattern = pcDigitPattern.sub('9', pc)
+    pattern = pcLetterPattern.sub('X', pattern)
+    pattern = pcSpacePattern.sub('#', pattern)          # dfpc['Postcode'].str.strip().str.replace(r'[0-9]', '9').str.replace(r'[A-Z]', 'X').str.replace(r'\s', '#')
+
+    # Overall pattern should be one of 6 known ones
+    
+    if pattern not in expectedPatterns :
+        print(f'*** unexpected pattern for {pc} : {pattern}')
+
+    # inward = last three digits
+    # outward = the rest
+    # outward part from the first digit onwards = district
+    # remainder of outward part is the area code, and should match the value already provded
+    inward = pc[-3:].strip()            # dfpc['Postcode'].str[-3:].str.strip()
+    outward = pc[0:-3].strip()          # dfpc['Postcode'].str[0:-3].str.strip()
+    district = ''                       # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[A-Z]', '')
+    a = ''                              # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[0-9]', '')
+    for i, c in enumerate(outward) :
+        if c.isdigit() :
+            district = outward[i:]
+            break
+        else :
+            a += c
+
+    if a != area :
+        print(f'*** area != area for {pc} : {a} : {area}')
+
+    rowsProcessed += 1
+    if rowsProcessed % 100000 == 0 :
+        print(f'.. processed {rowsProcessed} postcode patterns ..')
+    return { 'Pattern' : pattern, 'Outward' : outward, 'District' : district, 'Inward' : inward }
+
+
+def xaddPostCodeBreakdown(df, verbose=False) :
+
+    global rowsProcessed
+
+    # Look at each postcode and convert to a pattern, extract subcomponents of the postcode into separate columns
+    # NB This takes a few minutes for the full set of rows.
+
+    #dfBreakdown = df.copy()
+    #rowsProcessed = 0
+    # extradf = dfBreakdown[['Postcode', 'Post Town', 'PostcodeArea']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
+    #print(f'Concatenating extra postcode columns ..')
+    #df = pd.concat([dfBreakdown, extradf], axis='columns')
+    #print(f'.. extra postcode columns concatenated ..')
+
+    ...
+"""

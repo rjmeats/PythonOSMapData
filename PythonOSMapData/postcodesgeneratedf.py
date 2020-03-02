@@ -29,6 +29,8 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
         dataDir is the location which should hold the following datafiles:
         - codepo_gb.zip                      
           - the zipped set of files provided by the OS
+          - as well as postcode data files, this also includes a codelist.xlsx spreadsheet which contains 
+            mappings to convert location codes to country/district/ward names.
           - available via https://www.ordnancesurvey.co.uk/opendatadownload/products.html
         - postcode_district_area_lists.xls   
           - an Excel file converting Postcode area labels to 'Post Towns'
@@ -37,138 +39,195 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
         tmpDir is a location which can be used to unpack the zip file                                        
     '''
 
-    t1 = pd.Timestamp.now()
-    dfEmpty = pd.DataFrame()        # Returned if we detected a problem
-
     print(f'Generating postcode DataFrame from data files in {dataDir}..')
 
-    OSZipFile = dataDir + "/" + "codepo_gb.zip"
-    postcodeAreasFile = dataDir + "/" + "postcode_district_area_lists.xls"
+    startTiming()
+    dfEmpty = pd.DataFrame()        # Returned if we detected a problem
+
+    OSZipFile = dataDir + '/codepo_gb.zip'
+    postcodeAreasFile = dataDir + '/postcode_district_area_lists.xls'
+    # The codeslist file is produced when the zip file is extracted under the temp dir
+    codeslistFile = tmpDir + '/Doc/codelist.xlsx'
 
     print(f'- preparing files ..')
-    success = prepareFiles(OSZipFile, postcodeAreasFile, tmpDir, verbose)
+    success = prepareFiles(OSZipFile, postcodeAreasFile, codeslistFile, tmpDir, verbose)
     if not success :
         return dfEmpty
-    timeSoFar = pd.Timestamp.now()-t1
-    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+    showTiming()
 
     print(f'- loading code lookup data ..')
-    success, dictLookupdf = loadLookups(postcodeAreasFile, tmpDir, verbose)
+    success, dictLookupdf = loadLookups(postcodeAreasFile, codeslistFile, verbose)
     if not success :
         return dfEmpty
-    timeSoFar = pd.Timestamp.now()-t1
-    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+    showTiming()
 
     print(f'- loading raw postcode data files ..')
     df = loadFilesIntoDataFrame(tmpDir)
-    if not df.empty :
-        timeSoFar = pd.Timestamp.now()-t1
-        print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
-    else :
+    if df.empty :
         return dfEmpty
-
-    # Doing this here gets lost later ????
-    # merge loses categoricals https://github.com/pandas-dev/pandas/issues/10409 ?
-    #catCols = ['PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
-    #df[catCols] = df[catCols].astype('category')
+    showTiming()
 
     print(f'- adding code lookups ..')
     df = addCodeLookupColumns(df, dictLookupdf, verbose) 
-    timeSoFar = pd.Timestamp.now()-t1
-    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
-
-    # Why need to redo ?
-    catCols = ['PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
-    df[catCols] = df[catCols].astype('category')
-    catCols = [ 'Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name']
-    df[catCols] = df[catCols].astype('category')
+    if df.empty :
+        return dfEmpty
+    showTiming()
 
     print(f'- deriving postcode components ..')
     df = addPostCodeBreakdown(df, verbose=verbose)
     if df.empty :
         return dfEmpty
-    timeSoFar = pd.Timestamp.now()-t1
-    print(f'- time taken so far: {timeSoFar.total_seconds():.2f} seconds')
+    showTiming()
 
+    # Converting dimension-type columns to Pandas categoricals makes the overall dataframe size significantly smaller
+    # (and hence significantly quicker to reload from saved file when plotting from a cache). We can save a few seconds
+    # of generation time if we do this piecemeal as we go along, but it's messier and Pandas merge operations seem to lose 
+    # the categorical status of columns (?).
     print('- converting dimension columns to categoricals ..')
-    # ???? Do this as we go along ????
-    catCols = [ #'PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code', 
-                #'Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name', 
+    catCols = [ 'PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code', 
+                'Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name', 
                 'Pattern', 'Outward', 'District', 'Inward']
     df[catCols] = df[catCols].astype('category')
+    showTiming()
 
-    timeSoFar = pd.Timestamp.now()-t1
     print()
     print('Postcode DataFrame generation from source data files finished.')
-    print(f'- time taken : {timeSoFar.total_seconds():.2f} seconds')
+    showTiming(final=True)
 
     return df
 
-def prepareFiles(OSZipFile, postcodeAreasFile, tmpDir, verbose=False) :
+#############################################################################################
+
+# Simple timing utilties, to show how many seconds have elapsed since the start of the process
+# for generating the dataframe
+
+_t1 = None
+def startTiming() :
+    global _t1
+    _t1 = pd.Timestamp.now()
+
+def showTiming(final=False) :
+    timeSoFar = pd.Timestamp.now() - _t1
+    taken = timeSoFar.total_seconds()
+    print(f'- time taken{"" if final else " so far"}: {taken:.2f} seconds')
+
+#############################################################################################
+
+def prepareFiles(OSZipFile, postcodeAreasFile, codeslistFile, tmpDir, verbose=False) :
+    ''' Checks that source data files exist, and unzips the main OS data file into the tmp directory.
+        Returns True/False to indicate success/failure.
+    '''
+
+    if not unpackOSZipFile(OSZipFile, tmpDir, verbose) :
+        return False
 
     if not os.path.isfile(OSZipFile) :
-        print("*** No OS zip file found:", OSZipFile)
+        print(f'*** No OS zip file found: {OSZipFile}')
         return False
 
     if not os.path.isfile(postcodeAreasFile) :
-        print("*** No ONS postcode areas spreadsheet file found:", postcodeAreasFile)
+        print(f'*** No postcode areas spreadsheet file found: {postcodeAreasFile}')
         return False
 
-    if not unpackZipFile(OSZipFile, tmpDir, verbose) :
+    if not os.path.isfile(codeslistFile) :
+        print(f'*** No codes list spreadsheet file found: {codeslistFile}')
         return False
 
     return True
 
-def unpackZipFile(OSZipFile, tmpDir, verbose=False) :
-    """ Unzips the data file under a temporary directory. Checks basic sub-directories are as expected."""
+def unpackOSZipFile(OSZipFile, tmpDir, verbose=False) :
+    '''Unzips the OS data file under a temporary directory. Checks basic sub-directories are as expected.
+        Returns True/False to indicate success/failure.
+    '''
+
+    # We use the zipfile package to process the OS data file.
     z = zipfile.ZipFile(OSZipFile, mode='r')
 
-    zinfolist = z.infolist()
-    for zinfo in zinfolist :
+    # Look at the zipfile directory listing for files. We expect them all to exist in one of two folders,
+    # Data and Doc. [NB this protects from untrusted zip files with absolute file locations in it.]
+    for zinfo in z.infolist() :
         if zinfo.filename.startswith('Data/') or zinfo.filename.startswith('Doc/') :
+            # Expected
             if verbose: 
-                print(zinfo.filename)
+                print(f'.. zipfile contains: {zinfo.filename}')
         else :
-            print("*** Unexpected extract location found:", zinfo.filename, file=sys.stderr)
+            print(f'*** Unexpected directory used within zip file: {zinfo.filename}')
             return False
 
     print(f'.. extracting zip file {OSZipFile} under {tmpDir} ...')
+
+    # NB No error code is returned by the zipfile module if there is a problem unzipping, instead
+    # an exception is thrown which we allow to propagate. The zip file extract will overwrite
+    # an existing files in the same location with the same name.
     z.extractall(path=tmpDir)
     z.close()
 
     return True
 
-def loadLookups(postcodeAreasFile, tmpDir, verbose=True) :
+#############################################################################################
 
+def loadLookups(postcodeAreasFile, codeslistFile, verbose=True) :
+    '''Function controlling high-level loading of various lookup data into dataframes. 
+       Returns two values: True/False to indicate Success/Failure and a dictionary of 
+       the dataframes that have been loaded.
+    '''
     status = True
     dictLookupdf = {}
 
+    # Postcode area to Postcode town mappings come from their own spreadsheet
     dfAreas = loadPostcodeAreasFile(postcodeAreasFile)
     dictLookupdf['Areas'] = dfAreas
     if dfAreas.empty :
         status = False
 
+    # Country codes are defined locally in this module.
     dfCountries = loadCountryCodes()
     dictLookupdf['Countries'] = dfCountries
     if dfCountries.empty :
         status = False
 
-    dfCounties = loadCountyCodes(tmpDir)
+    # County, district and ward codes come from the same spreadsheet
+    dfCounties = loadCountyCodes(codeslistFile)
     dictLookupdf['Counties'] = dfCounties
     if dfCounties.empty :
         status = False
 
-    dfDistricts = loadDistrictCodes(tmpDir)
+    dfDistricts = loadDistrictCodes(codeslistFile)
     dictLookupdf['Districts'] = dfDistricts
     if dfDistricts.empty :
         status = False
 
-    dfWards = loadWardCodes(tmpDir)
+    dfWards = loadWardCodes(codeslistFile)
     dictLookupdf['Wards'] = dfWards
     if dfWards.empty :
         status = False
 
     return status, dictLookupdf
+
+#############################################################################################
+
+# The postcode_district_area_lists.xls file has lists of postcode areas, which should match the 'xx' part
+# of the 'xx.csv' postcode data file names. The file comes from here rather than the OS:
+# https://www.postcodeaddressfile.co.uk/downloads/free_products/postcode_district_area_lists.xls
+
+def loadPostcodeAreasFile(postcodeAreasFile) :
+
+    # NB Needed to 'pip install xlrd' for this to work.
+    dfAreas = pd.read_excel(postcodeAreasFile, sheet_name='Postcode Areas', header=0)
+    print(f'.. found {dfAreas.shape[0]} postcode areas in the areas spreadsheet')
+
+    # Check the columns are what we expect:
+    if dfAreas.columns[0] != 'Postcode Area' :
+        print(f'*** Unexpected column heading {dfAreas.columns[0]} for postcode areas file ')
+        return pd.DataFrame()
+
+    if dfAreas.columns[1] != 'Post Town' :
+        print(f'*** Unexpected column heading {dfAreas.columns[1]} for postcode areas file ')
+        return pd.DataFrame()
+
+    return dfAreas
+
+#############################################################################################
 
 def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
 
@@ -223,18 +282,18 @@ outputDFColumnNames = [ 'Postcode', 'PostcodeArea',
 mainCSVDataDir = 'Data/CSV/'
 
 def listsOfStringsMatch(l1, l2) :
-    """Do two lists of strings contain the same items in the same order, ignoring leading/trailing whitespace ?"""
+    '''Do two lists of strings contain the same items in the same order, ignoring leading/trailing whitespace ?'''
     if(len(l1) != len(l2)) : return False
     for i in range(len(l1)) :
         if l1[i].strip() != l2[i].strip() : return False
     return True
 
 def checkColumns(tmpDir, detail=False) :
-    """ Check that the file defining column headers contains what we expect. """
+    '''Check that the file defining column headers contains what we expect.'''
     columnsOK = False
     columnsFile = tmpDir + '/' + csvColumnNamesFile
     if not os.path.isfile(columnsFile) :
-        print(f"*** No columns definition file found at {columnsFile}", file=sys.stderr)
+        print(f'*** No columns definition file found at {columnsFile}', file=sys.stderr)
         columnsOK = False
     else :
         with open(columnsFile, 'r', ) as f:
@@ -244,21 +303,21 @@ def checkColumns(tmpDir, detail=False) :
             line2list = line2.split(sep=',')
             if not listsOfStringsMatch(csvColumnNames1, line1list) :
                 columnsOK = False
-                print(f"*** Columns definition file {csvColumnNamesFile} line 1 not as expected: {line1}", file=sys.stderr)
+                print(f'*** Columns definition file {csvColumnNamesFile} line 1 not as expected: {line1}', file=sys.stderr)
             elif not listsOfStringsMatch(csvColumnNames2, line2list) :
                 columnsOK = False
-                print(f"*** Columns definition file {csvColumnNamesFile} line 2 not as expected: {line2}", file=sys.stderr)
+                print(f'*** Columns definition file {csvColumnNamesFile} line 2 not as expected: {line2}', file=sys.stderr)
             else :
                 columnsOK = True
-                print(f".. columns definition file {csvColumnNamesFile} has the expected columns ...")
+                print(f'.. columns definition file {csvColumnNamesFile} has the expected columns ...')
 
     return columnsOK
 
 #############################################################################################
 
 def loadFilesIntoDataFrame(tmpDir, detail=False) :
-    """ Combines the individual data csv files for each postcode area into a single dataframe. Returns the dataframe,
-    or any empty dataframe if there is an error."""
+    '''Combines the individual data csv files for each postcode area into a single dataframe. Returns the dataframe,
+    or any empty dataframe if there is an error.'''
 
     if not checkColumns(tmpDir, detail) :
         # Column names not as expected.
@@ -325,37 +384,10 @@ def loadCountryCodes() :
     dfCountries = pd.DataFrame({ 'Country Code' : list(countryCodeDict.keys()), 'Country Name' : list(countryCodeDict.values()) })
     return dfCountries
 
-# The postcode_district_area_lists.xls file has lists of postcode areas, which should match the 'xx' part
-# of the 'xx.csv' postcode data file names. The file comes from here rather than the OS:
-# https://www.postcodeaddressfile.co.uk/downloads/free_products/postcode_district_area_lists.xls
-
-def loadPostcodeAreasFile(postcodeAreasFile) :
-
-    # NB Needed to 'pip install xlrd' for this to work.
-    dfAreas = pd.read_excel(postcodeAreasFile, sheet_name='Postcode Areas', header=0)
-    print(f'.. found {dfAreas.shape[0]} postcode areas in the areas spreadsheet')
-
-    # Check the columns are what we expect:
-    if dfAreas.columns[0] != 'Postcode Area' :
-        print(f'*** Unexpected column heading {dfAreas.columns[0]} for postcode areas file ')
-        return pd.DataFrame()
-
-    if dfAreas.columns[1] != 'Post Town' :
-        print(f'*** Unexpected column heading {dfAreas.columns[1]} for postcode areas file ')
-        return pd.DataFrame()
-
-    return dfAreas
-
 def stripWordCounty(s) :
-    return s.replace(" County", "").strip()
+    return s.replace(' County', '').strip()
 
-def loadCountyCodes(tmpDir) :
-
-    codeslistFile = tmpDir + r"/Doc/codelist.xlsx"
-
-    if not os.path.isfile(codeslistFile) :
-        print("*** No OS code list spreadsheet file found:", codeslistFile, file=sys.stderr)
-        return pd.DataFrame()
+def loadCountyCodes(codeslistFile) :
 
     # NB Needed to 'pip install xlrd' for this to work.
     dfCountyCodes = pd.read_excel(codeslistFile, sheet_name='CTY', header=None, names=['County Name', 'County Code'])
@@ -369,17 +401,11 @@ def loadCountyCodes(tmpDir) :
 
 def expandBoro(s) :
     if s.endswith('London Boro') :
-        return s.replace(" London Boro", " London Borough")
+        return s.replace(' London Boro', ' London Borough')
     else :
         return s
 
-def loadDistrictCodes(tmpDir) :
-
-    codeslistFile = tmpDir + r"/Doc/codelist.xlsx"
-
-    if not os.path.isfile(codeslistFile) :
-        print("*** No OS code list spreadsheet file found:", codeslistFile, file=sys.stderr)
-        return pd.DataFrame()
+def loadDistrictCodes(codeslistFile) :
 
     # NB Needed to 'pip install xlrd' for this to work.
     dfDistrictCodes1 = pd.read_excel(codeslistFile, sheet_name='DIS', header=None, names=['District Name', 'District Code'])
@@ -401,13 +427,7 @@ def loadDistrictCodes(tmpDir) :
 
     return dfDistrictCodes
 
-def loadWardCodes(tmpDir) :
-
-    codeslistFile = tmpDir + r"/Doc/codelist.xlsx"
-
-    if not os.path.isfile(codeslistFile) :
-        print("*** No OS code list spreadsheet file found:", codeslistFile, file=sys.stderr)
-        return pd.DataFrame()
+def loadWardCodes(codeslistFile) :
 
     # NB Needed to 'pip install xlrd' for this to work.
     dfWardCodes1 = pd.read_excel(codeslistFile, sheet_name='UTW', header=None, names=['Ward Name', 'Ward Code'])
@@ -435,7 +455,7 @@ def loadWardCodes(tmpDir) :
 
     dfDET = dfWardCodes['Ward Name'].str.endswith('(DET)')  # Column of True/False per ward code
     if dfDET.sum() > 0 :
-        print(f'  .. deleting records for {dfDET.sum()} ward names ending "(DET)""')
+        print(f'  .. deleting records for {dfDET.sum()} ward names ending "(DET)"')
         dfWardCodes.drop(dfWardCodes[dfDET].index, inplace=True)
         print(f'  .. leaving {dfWardCodes.shape[0]} combined ward codes')
 
@@ -613,7 +633,7 @@ def examinePostcodePatterns(df, verbose=True) :
 #############################################################################################
 
 def displayBasicDataFrameInfo(df, verbose=False) :
-    """ See what some basic pandas info calls show about the dataframe. """
+    '''See what some basic pandas info calls show about the dataframe.'''
 
     print()
     print('###################################################')

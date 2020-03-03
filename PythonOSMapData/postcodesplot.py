@@ -28,7 +28,7 @@ class postcodesPlotter() :
 
     def areaTypeToColumnName(self, areaType) :
         if areaType.lower() == 'pa' :
-            areaTypeColumn = 'PostcodeArea'
+            areaTypeColumn = 'Postcode_area'
         elif areaType.lower() == 'ow' :
             areaTypeColumn = 'Outward'
         elif areaType.lower() == 'wd' :
@@ -39,7 +39,7 @@ class postcodesPlotter() :
             areaTypeColumn = 'Country_code'
         else :
             print(f'*** Unrecognised areaType {areaType} when converting to a column name.')
-            areaTypeColumn = 'PostcodeArea'
+            areaTypeColumn = 'Postcode_area'
 
         return areaTypeColumn
 

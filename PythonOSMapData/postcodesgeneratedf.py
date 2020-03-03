@@ -64,7 +64,7 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
     showTiming()
 
     print(f'- loading raw postcode data files ..')
-    df = loadFilesIntoDataFrame(tmpDir)
+    df = loadFilesIntoDataFrame(tmpDir, verbose)
     if df.empty :
         return dfEmpty
     showTiming()
@@ -86,7 +86,7 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
     # of generation time if we do this piecemeal as we go along, but it's messier and Pandas merge operations seem to lose 
     # the categorical status of columns (?).
     print('- converting dimension columns to categoricals ..')
-    catCols = [ 'PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code', 
+    catCols = [ 'Postcode_area', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code', 
                 'Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name', 
                 'Pattern', 'Outward', 'District', 'Inward']
     df[catCols] = df[catCols].astype('category')
@@ -341,11 +341,180 @@ def loadWardCodes(codelistFile) :
     # Produce a Series of True/False values per ward code, indexed in the same way as the main wards dataframe
     dfDET = dfWardCodes['Ward Name'].str.strip().str.endswith('(DET)')  
     if dfDET.sum() > 0 :
-        print(f'  .. deleting records for {dfDET.sum()} ward names ending "(DET)"')
+        print(f'   .. deleting records for {dfDET.sum()} ward names ending "(DET)"')
         dfWardCodes.drop(dfWardCodes[dfDET].index, inplace=True)
         print(f'  .. leaving {dfWardCodes.shape[0]} combined ward codes')
 
     return dfWardCodes
+
+#############################################################################################
+
+# Functions involved in initial loading of the main postcode CSV data files into a dataframe.
+
+# -------------------------------------------------------------------------------------------
+# Column-naming -related data used to read/generate the initial dataframe from CSV files.
+
+# The Column header data we expect in the Column headers file. The 'Names2' data is what we
+# use to read in the CSV data initially. (Names1 column names  are checked but not used.)
+columnHeaderNames1 = ['PC', 'PQ', 'EA', 'NO', 'CY', 'RH', 'LH', 'CC', 'DC', 'WC']
+columnHeaderNames2 = [ 'Postcode', 
+                       'Positional_quality_indicator', 
+                       'Eastings', 'Northings', 'Country_code', 
+                       'NHS_regional_HA_code', 'NHS_HA_code', 
+                       'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
+
+# Define which of the above column names from line 2 we want to rename in the final dataframe 
+renamedColumns = {'Positional_quality_indicator' :'Quality'}
+
+# Define columns names and order for the final dataframe. NB we've dropped the NHS ones
+outputColumnNames = [ 'Postcode', 
+                      'Postcode_area',     # Derived from the file name.
+                      'Quality',           # Renamed from its original name
+                      'Eastings', 'Northings', 'Country_code', 
+                      # NB NHS code columns have been discarded.
+                      'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
+# -------------------------------------------------------------------------------------------
+
+def loadFilesIntoDataFrame(tmpDir, verbose=False) :
+    '''Combines the individual data CSV files for each postcode area into a single dataframe. Returns the dataframe,
+       or any empty dataframe if there is an error.'''
+
+    dfEmpty = pd.DataFrame()        # Returned if we detected a problem
+
+    # Location within the OS Zip file structure of the two items of interest here:
+    # - the directory which holds the detailed CSV data files 
+    # - the Column Headers file which lists the columns present in the CSV files
+    CSVDataDir = 'Data/CSV/'
+    columnHeadersFile = 'Doc/Code-Point_Open_Column_Headers.csv'
+
+    # At this point in processing, the ZIP file has already been unzipped under the tmp directory, so
+    # we can generate the full directory paths for these two items.
+    CSVDataDirPath = tmpDir + '/' + CSVDataDir
+    columnHeadersFilePath = tmpDir + '/' + columnHeadersFile
+
+    # First of all, check the Column Headers file provided exists and specifies the columns we expect.
+    if not os.path.isfile(columnHeadersFilePath) :
+        print(f'*** No CSV column headers definition file found at {columnHeadersFilePath}')
+        return dfEmpty
+        
+    # We expect the values below in these lines
+    if not checkColumnHeadersFile(columnHeadersFilePath, verbose) :
+        # Column names not as expected.
+        print(f'*** Problem with column headers definition file {columnHeadersFilePath}.')
+        return dfEmpty
+
+    # Check the CSV data directory exists.
+    if not os.path.isdir(CSVDataDirPath) :
+        print(f'*** No {CSVDataDir} CSV data directory found under: {tmpDir}')
+        return dfEmpty
+
+    # Now process the individual CSV data files.
+    df = loadCSVDataFiles(CSVDataDirPath, verbose)
+    if df.empty :
+        return dfEmpty
+
+    # Make Postcode the index instead of the auto-assigned range. As part of this, check there are no duplicate postcodes. And then
+    # go back to an auto-assigned range, as later group-bys are easier if the Postcode is present as a normal column.
+    try :
+        df = df.set_index('Postcode', verify_integrity=True).reset_index()
+    except ValueError as e :
+        print()
+        print(f'*** Found duplicate postcodes: {e}')
+        return dfEmpty
+
+    return df
+
+def checkColumnHeadersFile(columnHeadersFilePath, verbose=False) :
+    '''Check that the file defining the Column headers in the CSV data files contains what we expect. Returns True/False.'''
+
+    headersOK = False
+
+    # Read the headers file. It's a CSV file, we read the first two lines and compare the Header names in the cells 
+    # to what we expect to find. If there's a difference, subsequent code may not work properly as the format of the 
+    # main CSV data files will have changed.
+    with open(columnHeadersFilePath, 'r', ) as f:
+        line1 = f.readline().strip()
+        line1ValuesList = line1.split(sep=',')
+        line2 = f.readline().strip()
+        line2ValuesList = line2.split(sep=',')
+        if not compareListsOfStrings(columnHeaderNames1, line1ValuesList) :
+            headersOK = False
+            print(f'*** column headers definition file line 1 not as expected: {line1}')
+        elif not compareListsOfStrings(columnHeaderNames2, line2ValuesList) :
+            headersOK = False
+            print(f'*** column headers definition file line 2 not as expected: {line2}')
+        else :
+            headersOK = True
+            print(f'.. column headers definition file has the expected columns ...')
+
+    return headersOK
+
+def compareListsOfStrings(l1, l2) :
+    '''Utility to check whether two lists of strings contain the same items in the same order, ignoring leading/trailing whitespace.'''
+    for i in range(len(l1)) :
+        if l1[i].strip() != l2[i].strip() : return False
+    return True
+
+def loadCSVDataFiles(CSVDataDirPath, verbose=False):
+    '''Read the postcode CSV data files in the specified directory, and return a combined dataframe of their data.
+       Returns an empty dataframe if their is a problem.'''
+
+    dfEmpty = pd.DataFrame()        # Returned if we detected a problem
+
+    # Make a list of all the CSV files in the directory.
+    matchingFilenames = [entry.name for entry in os.scandir(CSVDataDirPath) if entry.is_file() and entry.name.endswith('.csv')]
+    print(f'.. found {len(matchingFilenames)} postcode data CSV files to process ...')
+
+    # Load the data for each CSV file in turn.
+    # We produce a separate dataframe, converted to the set of desired output column names, for each CSV file, and record these
+    # dataframes in a list.
+
+    totalPostcodes = 0
+    listOfDataframes = []
+
+    for (fileCount, filename) in enumerate(matchingFilenames, start=1) :
+        fullFilename = CSVDataDirPath + '/' + filename
+        # We expect one CSV file for each postcode area, with the CSV file for area XX called filled called xx.csv (in lower case).
+        postcodeArea = filename.replace('.csv', '').upper()
+
+        # Read the CSV file into a dataframe, using the column header names from the specified list..
+        # .. then rename certain columns as specified in a dictionary
+        # .. the add a column called Postcode
+        # .. and output just the columns we're interested in, in the order we want them.
+        # Note that this results in the row index being a numeric range 0-numrows-1
+        df = pd.read_csv(fullFilename, header=None, names=columnHeaderNames2)   \
+                .rename(columns=renamedColumns) \
+                .assign(Postcode_area=postcodeArea)[outputColumnNames]
+        
+        (numrows, numcols) = df.shape
+        if numcols != len(outputColumnNames) :
+            print(f'*** Unexpected number of columns ({numcols}) in CSV file {filename}')
+            print(df.head())
+            return dfEmpty
+
+        totalPostcodes += numrows
+        listOfDataframes.append(df)
+        if fileCount % 10 == 0 : print(f'   ..{fileCount:3d} files : {filename:>6.6s} {postcodeArea:>2.2s}: {numrows:5d} postcodes : {totalPostcodes:7d} total ..')
+
+    # Produce a combined dataframe by concatenating all the individual dataframes. Ignore the existing indexes, and so
+    # regenerate the numeric range index from scratch (0-numrows-1)
+    dfCombined = pd.concat(listOfDataframes, ignore_index=True)
+    print(f'.. found {dfCombined.shape[0]} postcodes in {len(matchingFilenames)} CSV files')
+
+    return dfCombined
+
+def checkAllUniqueValues(context, df, columnName) :
+
+    allUnique = False
+    try :
+        df.set_index(columnName, verify_integrity=True)
+        allUnique = True
+    except ValueError as e :
+        allUnique = False
+        print()
+        print(f'*** Found duplicate values in {context} in column {columnName}: {e}')
+
+    return allUnique
 
 #############################################################################################
 
@@ -354,7 +523,7 @@ def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
     # Add further columns showing looked-up values of the various codes columns, checking referential
     # itegrity and null-ness at the same time.
     dfDenormalised = df
-    areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
+    areasParameters = ('Postcode Area Codes', 'Postcode', 'Postcode_area', 'Postcode Area','Post Town')
     dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Areas'], areasParameters, 150, verbose=verbose)
 
     countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
@@ -378,130 +547,6 @@ def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
 
     return dfDenormalised
 
-
-#############################################################################################
-# Items relating to the columns in the main CSV file and resulting dataframe
-
-# Column names are provided in a separate file, with two lines - we expect the values below in these lines
-csvColumnNamesFile = 'Doc/Code-Point_Open_Column_Headers.csv'
-csvColumnNames1 = ['PC', 'PQ', 'EA', 'NO', 'CY', 'RH', 'LH', 'CC', 'DC', 'WC']
-csvColumnNames2 = [ 'Postcode', 
-                'Positional_quality_indicator', 'Eastings', 'Northings', 'Country_code', 
-                'NHS_regional_HA_code', 'NHS_HA_code', 
-                'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
-
-# Define which of the above column names from line 2 we want to rename in the final dataframe 
-renamedDFColumns = {'Positional_quality_indicator' :'Quality'}
-
-# Define columns names and order for the final dataframe. NB we've dropped the NHS ones
-outputDFColumnNames = [ 'Postcode', 'PostcodeArea', 
-                'Quality', 'Eastings', 'Northings', 'Country_code', 
-                'Admin_county_code', 'Admin_district_code', 'Admin_ward_code']
-
-# Where the main data files reside
-mainCSVDataDir = 'Data/CSV/'
-
-def listsOfStringsMatch(l1, l2) :
-    '''Do two lists of strings contain the same items in the same order, ignoring leading/trailing whitespace ?'''
-    if(len(l1) != len(l2)) : return False
-    for i in range(len(l1)) :
-        if l1[i].strip() != l2[i].strip() : return False
-    return True
-
-def checkColumns(tmpDir, detail=False) :
-    '''Check that the file defining column headers contains what we expect.'''
-    columnsOK = False
-    columnsFile = tmpDir + '/' + csvColumnNamesFile
-    if not os.path.isfile(columnsFile) :
-        print(f'*** No columns definition file found at {columnsFile}', file=sys.stderr)
-        columnsOK = False
-    else :
-        with open(columnsFile, 'r', ) as f:
-            line1 = f.readline().strip()
-            line1list = line1.split(sep=',')
-            line2 = f.readline().strip()
-            line2list = line2.split(sep=',')
-            if not listsOfStringsMatch(csvColumnNames1, line1list) :
-                columnsOK = False
-                print(f'*** Columns definition file {csvColumnNamesFile} line 1 not as expected: {line1}', file=sys.stderr)
-            elif not listsOfStringsMatch(csvColumnNames2, line2list) :
-                columnsOK = False
-                print(f'*** Columns definition file {csvColumnNamesFile} line 2 not as expected: {line2}', file=sys.stderr)
-            else :
-                columnsOK = True
-                print(f'.. columns definition file {csvColumnNamesFile} has the expected columns ...')
-
-    return columnsOK
-
-#############################################################################################
-
-def loadFilesIntoDataFrame(tmpDir, detail=False) :
-    '''Combines the individual data csv files for each postcode area into a single dataframe. Returns the dataframe,
-    or any empty dataframe if there is an error.'''
-
-    if not checkColumns(tmpDir, detail) :
-        # Column names not as expected.
-        return pd.DataFrame()
-
-    # Generate a list of csv files to process
-    mainDataDir = tmpDir + '/' + mainCSVDataDir
-    if not os.path.isdir(mainDataDir) :
-        print(f'*** No {mainCSVDataDir} directory found under: {mainDataDir}', file=sys.stderr)
-        return pd.DataFrame()
-    matchingFilenames = [entry.name for entry in os.scandir(mainDataDir) if entry.is_file() and entry.name.endswith('.csv')]
-    print(f'.. found {len(matchingFilenames)} CSV files to process ...')
-
-    # Build up a list of dataframes, one per CSV file, with the set of desired output column names.
-    # There is one CSV file for each postcode area, with the filled called xx.csv where xx is the postcode area (in lower case).
-    totalPostcodes = 0
-    dfList = []
-    for (fileCount, filename) in enumerate(matchingFilenames, start=1) :
-        if fileCount > 1000 : break
-        fullFilename = mainDataDir + filename
-        postcodeArea = filename.replace('.csv', '').upper()
-
-        df = pd.read_csv(fullFilename, header=None, names=csvColumnNames2)   \
-                .rename(columns=renamedDFColumns) \
-                .assign(PostcodeArea=postcodeArea)[outputDFColumnNames]
-        (numrows, numcols) = df.shape
-        if numcols != len(outputDFColumnNames) :
-            print()
-            print(f'*** Unexpected number of columns ({numcols}) in CSV file {filename}', file=sys.stderr)
-            print(df.info())
-            print(df.head())
-            return
-        totalPostcodes += numrows
-        dfList.append(df)
-        if fileCount % 10 == 0 : print(f'.. {fileCount:3d} files : {filename:>6.6s} {postcodeArea:>2.2s}: {numrows:5d} postcodes : {totalPostcodes:7d} total ..')
-
-    # Much faster to concatenate full set of collected dataframes than appending one-by-one.
-    # Need to avoid copy index values in, to avoid repeats.
-    combined_df = pd.concat(dfList, ignore_index=True)
-    print(f'.. found {combined_df.shape[0]} postcodes in {len(matchingFilenames)} CSV files')
-
-    # Make Postcode the index instead of the auto-assigned range. As part of this, check there are no duplicate postcodes. And then
-    # go back to an auto-assigned range, as later group-bys are easier if the Postcode is present as a normal column.
-    try :
-        combined_df = combined_df.set_index('Postcode', verify_integrity=True).reset_index()
-    except ValueError as e :
-        print()
-        print(f'*** Found duplicate postcodes: {e}')
-        return pd.DataFrame()
-
-    return combined_df
-
-def checkAllUniqueValues(context, df, columnName) :
-
-    allUnique = False
-    try :
-        df.set_index(columnName, verify_integrity=True)
-        allUnique = True
-    except ValueError as e :
-        allUnique = False
-        print()
-        print(f'*** Found duplicate values in {context} in column {columnName}: {e}', file=sys.stderr)
-
-    return allUnique
 
 def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10, verbose=False) :
 
@@ -541,7 +586,7 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10,
     dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='left')
     dfLookupNotFound = dfJoin[ dfJoin[lookupTableCodeColumn].isnull() & dfJoin[mainDataFrameCodeJoinColumn].notnull() ] [[mainDataFramePKColumn, mainDataFrameCodeJoinColumn]]
 
-    dfNullValues = df[ df[mainDataFrameCodeJoinColumn].isnull() ] [[mainDataFramePKColumn, 'PostcodeArea']]
+    dfNullValues = df[ df[mainDataFrameCodeJoinColumn].isnull() ] [[mainDataFramePKColumn, 'Postcode_area']]
 
     lookupsNotFoundCount = dfLookupNotFound.shape[0]
     nullValuesCount = dfNullValues.shape[0]
@@ -565,7 +610,7 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10,
         print(f'*** ... {nullValuesCount} row{"" if nullValuesCount == 1 else "s"} in the main table have'
                     f' a null value in the {mainDataFrameCodeJoinColumn} column ...')
 
-        dfNullValuesGrouped = dfNullValues.groupby('PostcodeArea', as_index=False).count()
+        dfNullValuesGrouped = dfNullValues.groupby('Postcode_area', as_index=False).count()
 
         print(f'*** ... {dfNullValuesGrouped.shape[0]} Postcode Area{"" if nullValuesCount == 1 else "s"} have null codes:')
         if verbose :
@@ -591,10 +636,11 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10,
 
     return dfJoin
 
+#############################################################################################
 
 def addPostCodeBreakdown(df, verbose=False) :
 
-    dfBreakdown = df[['Postcode', 'PostcodeArea']].copy()
+    dfBreakdown = df[['Postcode', 'Postcode_area']].copy()
 
     # First check that the postcode patterns present are the ones we expected.
     # In every case, the 'Inward' part consists of the last three characters (9XX), with the 'Outward' part
@@ -618,7 +664,7 @@ def addPostCodeBreakdown(df, verbose=False) :
     dfBreakdown['Outward']  = dfBreakdown['Postcode'].str[0:-3].str.strip()
     dfBreakdown[['Area', 'District']]  = dfBreakdown['Outward'].str.extract(r'([A-Z][A-Z]?)([0-9].*)')
 
-    dfBadArea = dfBreakdown [ dfBreakdown.Area != dfBreakdown.PostcodeArea ]
+    dfBadArea = dfBreakdown [ dfBreakdown.Area != dfBreakdown.Postcode_area ]
     if dfBadArea.shape[0] != 0 :
         print('** Bad area extraction from postcode')
         print(dfBadArea)
@@ -650,12 +696,12 @@ def examinePostcodePatterns(df, verbose=True) :
         with pd.option_context('display.max_rows', 20000):
             print()
             print(f'.. Postcodes grouped by Area and Outward ..')
-            dfG = df[['Postcode', 'PostcodeArea', 'Post Town', 'Outward']].groupby(['PostcodeArea', 'Post Town', 'Outward'], as_index=True).count()
+            dfG = df[['Postcode', 'Postcode_area', 'Post Town', 'Outward']].groupby(['Postcode_area', 'Post Town', 'Outward'], as_index=True).count()
             print()
             print(dfG)
             print()
             print(f'.. Unique Districts per Area ..')
-            dfG = df[['Postcode', 'PostcodeArea', 'Post Town', 'Outward']].groupby(['PostcodeArea', 'Post Town'], as_index=True)['Outward'].nunique()
+            dfG = df[['Postcode', 'Postcode_area', 'Post Town', 'Outward']].groupby(['Postcode_area', 'Post Town'], as_index=True)['Outward'].nunique()
             print()
             print(dfG)
 
@@ -735,13 +781,13 @@ def examineLocationColumns(df, verbose=False) :
     if not verbose :
         return
 
-    dfG = df[ ['Postcode', 'PostcodeArea', 'Quality', 'Eastings', 'Northings', 'County Name', 'District Name', 'Ward Name'] ].groupby('Quality').count()
+    dfG = df[ ['Postcode', 'Postcode_area', 'Quality', 'Eastings', 'Northings', 'County Name', 'District Name', 'Ward Name'] ].groupby('Quality').count()
     print()
     print('Counts of non-null values by location quality:')
     print()
     print(dfG)
 
-    dfG = df[ ['Postcode', 'PostcodeArea', 'Quality', 'Eastings', 'Northings'] ].groupby('Quality').agg(
+    dfG = df[ ['Postcode', 'Postcode_area', 'Quality', 'Eastings', 'Northings'] ].groupby('Quality').agg(
                 Cases = ('Quality', 'count'),
                 Min_E = ('Eastings', 'min'),
                 Max_E = ('Eastings', 'max'),
@@ -792,7 +838,7 @@ def getPattern(row) :
 
     # print(row)
     pc = row['Postcode']
-    area = row['PostcodeArea']
+    area = row['Postcode_area']
 
     pattern = pcDigitPattern.sub('9', pc)
     pattern = pcLetterPattern.sub('X', pattern)
@@ -836,7 +882,7 @@ def xaddPostCodeBreakdown(df, verbose=False) :
 
     #dfBreakdown = df.copy()
     #rowsProcessed = 0
-    # extradf = dfBreakdown[['Postcode', 'Post Town', 'PostcodeArea']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
+    # extradf = dfBreakdown[['Postcode', 'Post Town', 'Postcode_area']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
     #print(f'Concatenating extra postcode columns ..')
     #df = pd.concat([dfBreakdown, extradf], axis='columns')
     #print(f'.. extra postcode columns concatenated ..')

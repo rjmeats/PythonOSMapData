@@ -111,7 +111,7 @@ def saveDataframeAsCSV(df, postcodeArea='all', outDir=None, verbose=False) :
 
     # Work out which rows in the data from to save in the CSV file.
     if postcodeArea != 'all' :
-        dfToSave = df [ df['PostcodeArea'] == postcodeArea.upper() ]
+        dfToSave = df [ df['Postcode_area'] == postcodeArea.upper() ]
         print(f'.. using filtered data - just postcodes in the {postcodeArea.upper()} area : found {dfToSave.shape[0]} ..')
         if dfToSave.shape[0] == 0 :
             print()
@@ -135,12 +135,12 @@ def produceStats(df, verbose=False) :
 
     print(f'############### Grouping by PostcodeArea, all columns ###############')
     print()
-    dfAreaCounts = df.groupby('PostcodeArea').count()
+    dfAreaCounts = df.groupby('Postcode_area').count()
     print(f'Shape is {dfAreaCounts.shape}')
     print()
     print(dfAreaCounts)
 
-    groupByColumns = [ 'PostcodeArea', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 
+    groupByColumns = [ 'Postcode_area', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 
                         'Admin_district_code', 'Admin_ward_code' ]
 
     # Just show counts of each distinct value, column by column
@@ -158,7 +158,7 @@ def produceStats(df, verbose=False) :
         
 
     # Just PostcodeArea = shows that just a list of distinct values is returned when grouping a column with itself.
-    dfAreaCounts = df[['PostcodeArea']].groupby('PostcodeArea').count()
+    dfAreaCounts = df[['Postcode_area']].groupby('Postcode_area').count()
     print()
     print(f'############### Grouping by PostcodeArea with itself ###############')
     print()
@@ -368,7 +368,7 @@ def plotPlace(df, placeType, placeValue, plotter='CV2', imageOutDir=None, verbos
 
 def checkPostcodeAreaExists(df, code) :
     '''Does this Postcode Area exist in the dataframe ?'''
-    return code.strip().upper() in df['PostcodeArea'].values
+    return code.strip().upper() in df['Postcode_area'].values
 
 def checkPostcodeExists(df, code) :
     '''Does this Postcode exist in the dataframe ?'''
@@ -385,7 +385,7 @@ def getRandomPostcode(df) :
 
 def getRandomPostcodeArea(df) :
     '''Return a random Postcode Area value from the dataframe.'''
-    return getRandomCodeFromDataframe(df, 'PostcodeArea')
+    return getRandomCodeFromDataframe(df, 'Postcode_area')
 
 def getRandomGridSquare(df) :
     '''Return a random land-based National Grid square name.'''
@@ -498,7 +498,7 @@ def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None
     '''Set up a plot of the postcodes in the specified postcode area.'''
 
     # Filter the dataframe to just hold postcodes in this postcode area
-    dfArea = df [ df['PostcodeArea'] == postcodeArea.upper()]
+    dfArea = df [ df['Postcode_area'] == postcodeArea.upper()]
     if dfArea.empty :
         # Shouldn't happen
         print(f'*** Postcode area {postcodeArea.upper()} not found in dataframe')

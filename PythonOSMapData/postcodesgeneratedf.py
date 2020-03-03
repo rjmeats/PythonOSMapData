@@ -413,13 +413,7 @@ def loadFilesIntoDataFrame(tmpDir, verbose=False) :
     if df.empty :
         return dfEmpty
 
-    # Make Postcode the index instead of the auto-assigned range. As part of this, check there are no duplicate postcodes. And then
-    # go back to an auto-assigned range, as later group-bys are easier if the Postcode is present as a normal column.
-    try :
-        df = df.set_index('Postcode', verify_integrity=True).reset_index()
-    except ValueError as e :
-        print()
-        print(f'*** Found duplicate postcodes: {e}')
+    if not checkPostcodesPrimaryKey(df) :
         return dfEmpty
 
     return df
@@ -463,6 +457,7 @@ def loadCSVDataFiles(CSVDataDirPath, verbose=False):
 
     # Make a list of all the CSV files in the directory.
     matchingFilenames = [entry.name for entry in os.scandir(CSVDataDirPath) if entry.is_file() and entry.name.endswith('.csv')]
+
     print(f'.. found {len(matchingFilenames)} postcode data CSV files to process ...')
 
     # Load the data for each CSV file in turn.
@@ -488,6 +483,7 @@ def loadCSVDataFiles(CSVDataDirPath, verbose=False):
         
         (numrows, numcols) = df.shape
         if numcols != len(outputColumnNames) :
+
             print(f'*** Unexpected number of columns ({numcols}) in CSV file {filename}')
             print(df.head())
             return dfEmpty
@@ -503,20 +499,25 @@ def loadCSVDataFiles(CSVDataDirPath, verbose=False):
 
     return dfCombined
 
-def checkAllUniqueValues(context, df, columnName) :
+def checkPostcodesPrimaryKey(df) :
+    '''Check whether the Postcode column contains any duplicates or nulls. Returns True/False.'''
+        
+    if not df['Postcode'].is_unique :
+        print(f'*** Found duplicate postcodes')
+        print(df['Postcode'].value_counts())
+        return False
 
-    allUnique = False
-    try :
-        df.set_index(columnName, verify_integrity=True)
-        allUnique = True
-    except ValueError as e :
-        allUnique = False
-        print()
-        print(f'*** Found duplicate values in {context} in column {columnName}: {e}')
+    # Check for any null postcodes. isnull() returns an array of booleans, which should all be False.
+    nullCount = df['Postcode'].isnull().sum()
+    if nullCount != 0 :
+        print(f'*** Found {nullCount} null postcodes.')
+        return False
 
-    return allUnique
+    return True
 
 #############################################################################################
+
+## To here ##
 
 def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
 
@@ -635,6 +636,19 @@ def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10,
                 print(f'.. and {dfReportGroup.shape[0] - reportCodeUsage} more cases ..')
 
     return dfJoin
+
+def checkAllUniqueValues(context, df, columnName) :
+
+    allUnique = False
+    try :
+        df.set_index(columnName, verify_integrity=True)
+        allUnique = True
+    except ValueError as e :
+        allUnique = False
+        print()
+        print(f'*** Found duplicate values in {context} in column {columnName}: {e}')
+
+    return allUnique
 
 #############################################################################################
 

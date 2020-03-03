@@ -20,6 +20,8 @@ import zipfile
 
 import pandas as pd
 
+# NB Also need to have done a 'pip install xlrd' for pd.read_excel calls to work.
+
 #############################################################################################
 
 def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
@@ -46,17 +48,17 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
 
     OSZipFile = dataDir + '/codepo_gb.zip'
     postcodeAreasFile = dataDir + '/postcode_district_area_lists.xls'
-    # The codeslist file is produced when the zip file is extracted under the temp dir
-    codeslistFile = tmpDir + '/Doc/codelist.xlsx'
+    # The codelist file is produced when the zip file is extracted under the temp dir
+    codelistFile = tmpDir + '/Doc/codelist.xlsx'
 
     print(f'- preparing files ..')
-    success = prepareFiles(OSZipFile, postcodeAreasFile, codeslistFile, tmpDir, verbose)
+    success = prepareFiles(OSZipFile, postcodeAreasFile, codelistFile, tmpDir, verbose)
     if not success :
         return dfEmpty
     showTiming()
 
     print(f'- loading code lookup data ..')
-    success, dictLookupdf = loadLookups(postcodeAreasFile, codeslistFile, verbose)
+    success, dictLookupdf = loadLookups(postcodeAreasFile, codelistFile, verbose)
     if not success :
         return dfEmpty
     showTiming()
@@ -107,13 +109,14 @@ def startTiming() :
     _t1 = pd.Timestamp.now()
 
 def showTiming(final=False) :
+    global _t1
     timeSoFar = pd.Timestamp.now() - _t1
     taken = timeSoFar.total_seconds()
     print(f'- time taken{"" if final else " so far"}: {taken:.2f} seconds')
 
 #############################################################################################
 
-def prepareFiles(OSZipFile, postcodeAreasFile, codeslistFile, tmpDir, verbose=False) :
+def prepareFiles(OSZipFile, postcodeAreasFile, codelistFile, tmpDir, verbose=False) :
     ''' Checks that source data files exist, and unzips the main OS data file into the tmp directory.
         Returns True/False to indicate success/failure.
     '''
@@ -129,8 +132,8 @@ def prepareFiles(OSZipFile, postcodeAreasFile, codeslistFile, tmpDir, verbose=Fa
         print(f'*** No postcode areas spreadsheet file found: {postcodeAreasFile}')
         return False
 
-    if not os.path.isfile(codeslistFile) :
-        print(f'*** No codes list spreadsheet file found: {codeslistFile}')
+    if not os.path.isfile(codelistFile) :
+        print(f'*** No codes list spreadsheet file found: {codelistFile}')
         return False
 
     return True
@@ -166,7 +169,7 @@ def unpackOSZipFile(OSZipFile, tmpDir, verbose=False) :
 
 #############################################################################################
 
-def loadLookups(postcodeAreasFile, codeslistFile, verbose=True) :
+def loadLookups(postcodeAreasFile, codelistFile, verbose=True) :
     '''Function controlling high-level loading of various lookup data into dataframes. 
        Returns two values: True/False to indicate Success/Failure and a dictionary of 
        the dataframes that have been loaded.
@@ -187,17 +190,17 @@ def loadLookups(postcodeAreasFile, codeslistFile, verbose=True) :
         status = False
 
     # County, district and ward codes come from the same spreadsheet
-    dfCounties = loadCountyCodes(codeslistFile)
+    dfCounties = loadCountyCodes(codelistFile)
     dictLookupdf['Counties'] = dfCounties
     if dfCounties.empty :
         status = False
 
-    dfDistricts = loadDistrictCodes(codeslistFile)
+    dfDistricts = loadDistrictCodes(codelistFile)
     dictLookupdf['Districts'] = dfDistricts
     if dfDistricts.empty :
         status = False
 
-    dfWards = loadWardCodes(codeslistFile)
+    dfWards = loadWardCodes(codelistFile)
     dictLookupdf['Wards'] = dfWards
     if dfWards.empty :
         status = False
@@ -206,32 +209,149 @@ def loadLookups(postcodeAreasFile, codeslistFile, verbose=True) :
 
 #############################################################################################
 
-# The postcode_district_area_lists.xls file has lists of postcode areas, which should match the 'xx' part
-# of the 'xx.csv' postcode data file names. The file comes from here rather than the OS:
-# https://www.postcodeaddressfile.co.uk/downloads/free_products/postcode_district_area_lists.xls
+# The post code areas spreadsheet file contains a sheet which lists postcode areas and their
+# corresponding post town.
+#
+# Postcode Area	   Post Town
+# AB               Aberdeen
+# AL               St. Albans
+# B                Birmingham
+# BA	           Bath
+# ...
+# Read these into a dataframe of two columns.
 
 def loadPostcodeAreasFile(postcodeAreasFile) :
+    '''Reads the post code areas spreadsheet and returns a dataframe mapping area codes to Post town names.
+       Returns an empty dataframe if the file format is not as expected.
+    '''
 
-    # NB Needed to 'pip install xlrd' for this to work.
+    # Read the relevant sheet from the spreadsheet. Use the first row for column headings.
     dfAreas = pd.read_excel(postcodeAreasFile, sheet_name='Postcode Areas', header=0)
-    print(f'.. found {dfAreas.shape[0]} postcode areas in the areas spreadsheet')
+    print(f'.. found {dfAreas.shape[0]} postcode areas in the Postcode Areas spreadsheet')
 
-    # Check the columns are what we expect:
-    if dfAreas.columns[0] != 'Postcode Area' :
-        print(f'*** Unexpected column heading {dfAreas.columns[0]} for postcode areas file ')
-        return pd.DataFrame()
-
-    if dfAreas.columns[1] != 'Post Town' :
-        print(f'*** Unexpected column heading {dfAreas.columns[1]} for postcode areas file ')
-        return pd.DataFrame()
+    # Check the column headings are what we expect:
+    expectedColumnNames = ['Postcode Area', 'Post Town']
+    for n, name in enumerate(expectedColumnNames) :
+        if dfAreas.columns[n] != name :
+            print(f'*** Unexpected column heading "{dfAreas.columns[n]}" for the Postcode Areas file - expected "{name}"')
+            return pd.DataFrame()
 
     return dfAreas
+
+# For some reason, the code mapping spreadsheet provided by the OS includes ONS County/District/Borough/Ward mappings, but
+# nothing for top-level ONS UK country codes. So for simplicity just hard-code them here.
+def loadCountryCodes() :
+    '''Returns a dataframe mapping ONS UK country codes to country names.'''
+
+    countryCodeDict = {
+        'E92000001' : 'England',
+        'S92000003' : 'Scotland',
+        'W92000004' : 'Wales',
+        'N92000002' : 'N. Ireland'
+    }
+
+    dfCountries = pd.DataFrame({ 
+                                    'Country Code' : list(countryCodeDict.keys()), 
+                                    'Country Name' : list(countryCodeDict.values()) 
+                                })
+    return dfCountries
+
+def loadCountyCodes(codelistFile) :
+    '''Reads the OS Code list spreadsheet and returns a dataframe mapping county codes to county names.'''
+
+    # Read the relevant sheet from the spreadsheet, specifying column names as there are none in the sheet.
+    dfCountyCodes = pd.read_excel(codelistFile, sheet_name='CTY', header=None, names=['County Name', 'County Code'])
+    
+    print(f'.. found {dfCountyCodes.shape[0]} county codes in the code list spreadsheet')
+
+    # Remove the word 'County' from the end of the county name, e.g. 'Essex  County' => 'Essex'
+    dfCountyCodes['County Name'] = dfCountyCodes['County Name'].str.strip().str.replace(' County', '').str.strip()
+
+    return dfCountyCodes
+
+def _adjustLBO(s) :
+    '''Helper function invoked by Pandas '.apply()' to adjust the names of London Boroughs.'''
+    if s.endswith('London Boro') :
+        return 'London Borough of ' + s.replace(' London Boro', '').strip()
+    elif 'City of London' in s :
+        return 'City of London'
+    else :
+        return s.strip()
+
+def loadDistrictCodes(codelistFile) :
+    '''Reads the OS Code List spreadsheet and returns a dataframe mapping district codes to district names.'''
+
+    # Examination of the post code data files has shown that four types of district code combine to populate the 
+    # 'admin_district_code' field of the detailed post code data:
+    # - District
+    # - Metropolitan District
+    # - Unitary Authority
+    # - London Borough
+    # Each district type has its own sheet in the Code List spreadsheet
+
+    dfList = []
+    for districtType in ['DIS', 'MTD', 'UTA', 'LBO'] :
+        df = pd.read_excel(codelistFile, sheet_name=districtType, header=None, names=['District Name', 'District Code'])
+        dfList.append(df)
+
+        print(f'.. found {df.shape[0]} {districtType} district codes in the Code List spreadsheet')
+
+        # Change 'London Boro' to 'London Borough' at the end of the district name, where relevant.
+        # Use apply rather than a bulk-column operation as not all rows need the change, and 
+        # making the conditional within the bulk processing is trickier. 
+        if districtType == 'LBO' :
+            df['District Name'] = df['District Name'].str.strip().apply(_adjustLBO)
+
+    # Join the separate dataframes into one large one.
+    dfDistrictCodes = pd.concat(dfList, ignore_index=True)
+    print(f'.. found {dfDistrictCodes.shape[0]} combined district codes in the Code List spreadsheet')
+
+    return dfDistrictCodes
+
+def loadWardCodes(codelistFile) :
+    '''Reads the OS Code List spreadsheet and returns a dataframe mapping ward codes to ward names.'''
+
+    # Examination of the post code data files has shown that five types of ward code combine to populate the 
+    # 'admin_ward_code' field of the detailed post code data:
+    # - Unitary Authority Ward
+    # - Unitary Authority Electoral Division
+    # - District Ward
+    # - London Borough Ward
+    # - Metropolitan District Ward
+    # Each ward type has its own sheet in the Code List spreadsheet
+
+    dfList = []
+    for wardType in ['UTW', 'UTE', 'DIW', 'LBW', 'MTW'] :
+        df = pd.read_excel(codelistFile, sheet_name=wardType, header=None, names=['Ward Name', 'Ward Code'])
+        dfList.append(df)
+
+        print(f'.. found {df.shape[0]} {wardType} ward codes in the Code List spreadsheet')
+
+    # Join the separate dataframes into one large one.
+    dfWardCodes = pd.concat(dfList, ignore_index=True)
+    print(f'.. found {dfWardCodes.shape[0]} combined ward codes in the Code List spreadsheet')
+
+    # Note the spreadsheet has a few cases where a code has two names, with one of them ending (DET). E.g.
+    # Tintagel ED	E05009271
+    # Tintagel ED (DET)	E05009271
+    # According to https://www.ordnancesurvey.co.uk/documents/product-support/tech-spec/boundary-line-technical-specification.pdf
+    # this indicates a 'detached' part of the area, i.e. an exclave.
+    # For our simple purposes, just delete the (DET) entries.
+
+    # Produce a Series of True/False values per ward code, indexed in the same way as the main wards dataframe
+    dfDET = dfWardCodes['Ward Name'].str.strip().str.endswith('(DET)')  
+    if dfDET.sum() > 0 :
+        print(f'  .. deleting records for {dfDET.sum()} ward names ending "(DET)"')
+        dfWardCodes.drop(dfWardCodes[dfDET].index, inplace=True)
+        print(f'  .. leaving {dfWardCodes.shape[0]} combined ward codes')
+
+    return dfWardCodes
 
 #############################################################################################
 
 def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
 
-    # Add further columns showing looked-up values of the various code columns, checking referential
+    # Add further columns showing looked-up values of the various codes columns, checking referential
     # itegrity and null-ness at the same time.
     dfDenormalised = df
     areasParameters = ('Postcode Area Codes', 'Postcode', 'PostcodeArea', 'Postcode Area','Post Town')
@@ -369,97 +489,6 @@ def loadFilesIntoDataFrame(tmpDir, detail=False) :
         return pd.DataFrame()
 
     return combined_df
-
-#############################################################################################
-
-def loadCountryCodes() :
-
-    countryCodeDict = {
-        'E92000001' : 'England',
-        'S92000003' : 'Scotland',
-        'W92000004' : 'Wales',
-        'N92000002' : 'N. Ireland'
-    }
-
-    dfCountries = pd.DataFrame({ 'Country Code' : list(countryCodeDict.keys()), 'Country Name' : list(countryCodeDict.values()) })
-    return dfCountries
-
-def stripWordCounty(s) :
-    return s.replace(' County', '').strip()
-
-def loadCountyCodes(codeslistFile) :
-
-    # NB Needed to 'pip install xlrd' for this to work.
-    dfCountyCodes = pd.read_excel(codeslistFile, sheet_name='CTY', header=None, names=['County Name', 'County Code'])
-    
-    print(f'.. found {dfCountyCodes.shape[0]} county codes in the code list spreadsheet')
-
-    # Remove the word 'County' from the end of the name, e.g. 'Essex County' => 'Essex'
-    dfCountyCodes['County Name'] = dfCountyCodes['County Name'].apply(stripWordCounty)
-
-    return dfCountyCodes
-
-def expandBoro(s) :
-    if s.endswith('London Boro') :
-        return s.replace(' London Boro', ' London Borough')
-    else :
-        return s
-
-def loadDistrictCodes(codeslistFile) :
-
-    # NB Needed to 'pip install xlrd' for this to work.
-    dfDistrictCodes1 = pd.read_excel(codeslistFile, sheet_name='DIS', header=None, names=['District Name', 'District Code'])
-    dfDistrictCodes2 = pd.read_excel(codeslistFile, sheet_name='MTD', header=None, names=['District Name', 'District Code'])
-    dfDistrictCodes3 = pd.read_excel(codeslistFile, sheet_name='UTA', header=None, names=['District Name', 'District Code'])
-    dfDistrictCodes4 = pd.read_excel(codeslistFile, sheet_name='LBO', header=None, names=['District Name', 'District Code'])
-    
-    print(f'.. found {dfDistrictCodes1.shape[0]} DIS district codes in the code list spreadsheet')
-    print(f'.. found {dfDistrictCodes2.shape[0]} MTD district codes in the code list spreadsheet')
-    print(f'.. found {dfDistrictCodes3.shape[0]} UTA district codes in the code list spreadsheet')
-    print(f'.. found {dfDistrictCodes4.shape[0]} LBO district codes in the code list spreadsheet')
-
-    dfDistrictCodes = pd.concat([dfDistrictCodes1, dfDistrictCodes2, dfDistrictCodes3, dfDistrictCodes4], ignore_index=True)
-
-    print(f'.. found {dfDistrictCodes.shape[0]} combined district codes in the code list spreadsheet')
-
-    # Change 'London Boro' to 'London Borough' at the end of the name, were relevant
-    dfDistrictCodes['District Name'] = dfDistrictCodes['District Name'].apply(expandBoro)
-
-    return dfDistrictCodes
-
-def loadWardCodes(codeslistFile) :
-
-    # NB Needed to 'pip install xlrd' for this to work.
-    dfWardCodes1 = pd.read_excel(codeslistFile, sheet_name='UTW', header=None, names=['Ward Name', 'Ward Code'])
-    dfWardCodes2 = pd.read_excel(codeslistFile, sheet_name='UTE', header=None, names=['Ward Name', 'Ward Code'])
-    dfWardCodes3 = pd.read_excel(codeslistFile, sheet_name='DIW', header=None, names=['Ward Name', 'Ward Code'])
-    dfWardCodes4 = pd.read_excel(codeslistFile, sheet_name='LBW', header=None, names=['Ward Name', 'Ward Code'])
-    dfWardCodes5 = pd.read_excel(codeslistFile, sheet_name='MTW', header=None, names=['Ward Name', 'Ward Code'])
-    
-    print(f'.. found {dfWardCodes1.shape[0]} UTW ward codes in the code list spreadsheet')
-    print(f'.. found {dfWardCodes2.shape[0]} UTE ward codes in the code list spreadsheet')
-    print(f'.. found {dfWardCodes3.shape[0]} DIW ward codes in the code list spreadsheet')
-    print(f'.. found {dfWardCodes4.shape[0]} LBW ward codes in the code list spreadsheet')
-    print(f'.. found {dfWardCodes5.shape[0]} MTW ward codes in the code list spreadsheet')
-
-    dfWardCodes = pd.concat([dfWardCodes1, dfWardCodes2, dfWardCodes3, dfWardCodes4, dfWardCodes5], ignore_index=True)
-
-    print(f'.. found {dfWardCodes.shape[0]} combined ward codes in the code list spreadsheet')
-
-    # Note the spreadsheet has a few cases where a code has two names, with one of them ending (DET). E.g.
-    # Tintagel ED	E05009271
-    # Tintagel ED (DET)	E05009271
-    # According to https://www.ordnancesurvey.co.uk/documents/product-support/tech-spec/boundary-line-technical-specification.pdf
-    # this indicates a 'detached' part of the area, i.e. an enclave.
-    # For our simple purposes, just delete the (DET) entries.
-
-    dfDET = dfWardCodes['Ward Name'].str.endswith('(DET)')  # Column of True/False per ward code
-    if dfDET.sum() > 0 :
-        print(f'  .. deleting records for {dfDET.sum()} ward names ending "(DET)"')
-        dfWardCodes.drop(dfWardCodes[dfDET].index, inplace=True)
-        print(f'  .. leaving {dfWardCodes.shape[0]} combined ward codes')
-
-    return dfWardCodes
 
 def checkAllUniqueValues(context, df, columnName) :
 

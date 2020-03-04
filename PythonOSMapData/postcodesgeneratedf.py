@@ -520,38 +520,51 @@ def checkPostcodesPrimaryKey(df) :
 ## To here ##
 
 def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
+    '''High level control of the addition of columns containing values looked up using the codes
+       already in the table. Returns a dataframe with the additional columns.'''
 
-    # Add further columns showing looked-up values of the various codes columns, checking referential
-    # itegrity and null-ness at the same time.
-    dfDenormalised = df
-    areasParameters = ('Postcode Area Codes', 'Postcode', 'Postcode_area', 'Postcode Area','Post Town')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Areas'], areasParameters, 150, verbose=verbose)
+    originalOutputColumnNames = list(df.columns)
+    dfDenormalised = df.copy()
 
-    countriesParameters = ('Country Codes', 'Postcode', 'Country_code', 'Country Code', 'Country Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Countries'], countriesParameters, 10, verbose=verbose)
+    # Resolve each type of code in turn, by joining to the relevant 'lookup' dataframe to add a new column to 
+    # the main dataframe. Performs some referential integrity checks as part of this.
+    #
+    # In each case we pass in a tuple of detailed parameters, just to aid readability. Each tuple 
+    # contains:
+    # - context string for use in 'print' reporting 
+    # - name of the code column to resolve in the main dataframe
+    # - name of the code column in the lookup dataframe
+    # - name of the value column in the lookup dataframe
+    # - how many code values to print out in verbose mode
 
-    countiesParameters = ('County Codes', 'Postcode', 'Admin_county_code', 'County Code','County Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Counties'], countiesParameters, 50, verbose=verbose)
+    areasParameters = ('Postcode Area Codes', 'Postcode_area', 'Postcode Area', 'Post Town', 150)
+    dfDenormalised = resolveDimensionCodes(dfDenormalised, dictLookupdf['Areas'], areasParameters, verbose=verbose)
 
-    districtsParameters = ('District Codes', 'Postcode', 'Admin_district_code', 'District Code','District Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Districts'], districtsParameters, 20, verbose=verbose)
+    countriesParameters = ('Country Codes', 'Country_code', 'Country Code', 'Country Name', 4)
+    dfDenormalised = resolveDimensionCodes(dfDenormalised, dictLookupdf['Countries'], countriesParameters, verbose=verbose)
 
-    wardsParameters = ('Ward Codes', 'Postcode', 'Admin_ward_code', 'Ward Code','Ward Name')
-    dfDenormalised = checkCodesReferentialIntegrity(dfDenormalised, dictLookupdf['Wards'], wardsParameters, 20, verbose=verbose)
+    countiesParameters = ('County Codes', 'Admin_county_code', 'County Code', 'County Name', 50)
+    dfDenormalised = resolveDimensionCodes(dfDenormalised, dictLookupdf['Counties'], countiesParameters, verbose=verbose)
+
+    districtsParameters = ('District Codes', 'Admin_district_code', 'District Code', 'District Name', 20)
+    dfDenormalised = resolveDimensionCodes(dfDenormalised, dictLookupdf['Districts'], districtsParameters, verbose=verbose)
+
+    wardsParameters = ('Ward Codes', 'Admin_ward_code', 'Ward Code', 'Ward Name', 20)
+    dfDenormalised = resolveDimensionCodes(dfDenormalised, dictLookupdf['Wards'], wardsParameters, verbose=verbose)
 
     # Prune the column list - the above will have added an extra copy of each 'code' column that we can
-    # remove again. Just use the original columns in the dataframe and the main lookup columns added.
-    
-    fullOutputColumns = (list(df.columns)).copy()
+    # remove again. Just use the original columns in the dataframe and the lookup values added here.
+    fullOutputColumns = originalOutputColumnNames.copy()
     fullOutputColumns.extend(['Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name'])
     dfDenormalised = dfDenormalised[fullOutputColumns]
 
     return dfDenormalised
 
+def resolveDimensionCodes(df, dfLookup, parameters, verbose=False) :
 
-def checkCodesReferentialIntegrity(df, dfLookup, parameters, reportCodeUsage=10, verbose=False) :
+    mainDataFramePKColumn = 'Postcode'
 
-    (context, mainDataFramePKColumn, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, lookupTableValueColumn) = parameters
+    (context, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, lookupTableValueColumn, reportCodeUsage) = parameters
 
     print()
     print(f'Checking {context} ...')

@@ -341,7 +341,7 @@ def loadWardCodes(codelistFile) :
     # Produce a Series of True/False values per ward code, indexed in the same way as the main wards dataframe
     dfDET = dfWardCodes['Ward Name'].str.strip().str.endswith('(DET)')  
     if dfDET.sum() > 0 :
-        print(f'   .. deleting records for {dfDET.sum()} ward names ending "(DET)"')
+        print(f'   .. deleting records for {dfDET.sum()} ward names ending in "(DET)"')
         dfWardCodes.drop(dfWardCodes[dfDET].index, inplace=True)
         print(f'  .. leaving {dfWardCodes.shape[0]} combined ward codes')
 

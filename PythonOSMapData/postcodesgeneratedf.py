@@ -549,8 +549,7 @@ def checkPrimaryKey(context, df, pkColumn) :
 
 def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
     '''High level control of the addition of columns containing values looked up using the codes
-       already in the table. Returns a dataframe with the additional columns, or an empty dataframe
-       if there are serious errors.'''
+       already in the table. Returns a dataframe with the additional columns.'''
 
     dfDenormalised = df.copy()
 
@@ -559,38 +558,37 @@ def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
     #
     # In each case we pass in a tuple of detailed parameters, just to aid readability. Each tuple 
     # contains:
-    # - context string for use in 'print' reporting 
     # - dataframe containing lookup values
     # - name of the code column to resolve in the main dataframe
     # - name of the code column in the lookup dataframe
     # - name of the value column in the lookup dataframe
     # - how many code values to print out in verbose mode
 
-    areasParameters =     ('Postcode Area Codes', dictLookupdf['Areas'], 'Postcode_area', 'Postcode Area', 'Post Town', 150)
-    countriesParameters = ('Country Codes', dictLookupdf['Countries'], 'Country_code', 'Country Code', 'Country Name', 4)
-    countiesParameters =  ('County Codes', dictLookupdf['Counties'], 'Admin_county_code', 'County Code', 'County Name', 50)
-    districtsParameters = ('District Codes', dictLookupdf['Districts'], 'Admin_district_code', 'District Code', 'District Name', 20)
-    wardsParameters =     ('Ward Codes', dictLookupdf['Wards'], 'Admin_ward_code', 'Ward Code', 'Ward Name', 20)
+    areasParameters =     (dictLookupdf['Areas'], 'Postcode_area', 'Postcode Area', 'Post Town', 150)
+    countriesParameters = (dictLookupdf['Countries'], 'Country_code', 'Country Code', 'Country Name', 4)
+    countiesParameters =  (dictLookupdf['Counties'], 'Admin_county_code', 'County Code', 'County Name', 50)
+    districtsParameters = (dictLookupdf['Districts'], 'Admin_district_code', 'District Code', 'District Name', 20)
+    wardsParameters =     (dictLookupdf['Wards'], 'Admin_ward_code', 'Ward Code', 'Ward Name', 20)
 
     for parameters in [ areasParameters, countriesParameters, countiesParameters, districtsParameters, wardsParameters ] :
         dfDenormalised = resolveLookupCodes(dfDenormalised, *parameters, verbose=verbose)
-        if dfDenormalised.empty :
-            return pd.DataFrame()
 
     return dfDenormalised
 
-def resolveLookupCodes(df, context, dfLookup, mainDataFrameCodeJoinColumn, 
+def resolveLookupCodes(df, dfLookup, mainDataFrameCodeJoinColumn, 
                           lookupTableCodeColumn, lookupTableValueColumn, 
                           reportCodeUsage=10, verbose=False) :
     '''Performs the detailed processing of adding a 'value' column for a specified code column, using a lookup dataframe.
        Also does some referential integrity checking and null-value checking. Returns the dataframe with the additional
        'values' column.'''
 
-    print(f'  .. checking {context} lookups ..')
+    print(f'  .. checking "{mainDataFrameCodeJoinColumn}" column lookups ..')
     indent = ' ' * 5        # For formatting progress messages.
 
     # Remeber the columns we started with, so we can do some pruning of temporary columns later.
     originalColumnNames = list(df.columns)
+
+    # To here
 
     # Outer join the main table and lookup table to find unused domain values in the lookup, and pull out records
     # with no value for the main table. We will only have one record per unused value. 
@@ -602,7 +600,7 @@ def resolveLookupCodes(df, context, dfLookup, mainDataFrameCodeJoinColumn,
         print(f'{indent}.. all values in the lookup table are referenced in the {mainDataFrameCodeJoinColumn} column ..')
     else :
         print(f'{indent}.. {unusedLookupsCount} '
-                    f'{"value in the lookup table is" if unusedLookupsCount == 1 else "values in the lookup table are"} '
+                    f'{"code in the lookup table is" if unusedLookupsCount == 1 else "codes in the lookup table are"} '
                     f'not referenced in the {mainDataFrameCodeJoinColumn} column ..')
         if verbose :
             for index, row in dfUnusedLookup.iterrows() :
@@ -620,11 +618,11 @@ def resolveLookupCodes(df, context, dfLookup, mainDataFrameCodeJoinColumn,
     lookupsNotFoundCount = dfLookupNotFound.shape[0]
     nullValuesCount = dfNullValues.shape[0]
     if lookupsNotFoundCount == 0 :
-        print(f'{indent}.. all {"" if nullValuesCount == 0 else "non-null "}rows in the main table {mainDataFrameCodeJoinColumn} column have a '
-                    f'lookup value in the {lookupTableCodeColumn} column of the domain table')
+        print(f'{indent}.. all {"" if nullValuesCount == 0 else "non-null "}codes in the {mainDataFrameCodeJoinColumn} column '
+                    f'exist in the lookup table')
     else :
-        print(f'{indent}*** {lookupsNotFoundCount} {"" if nullValuesCount == 0 else "non-null "}row{"" if lookupsNotFoundCount == 1 else "s"} '
-                    f'in the main table have no lookup value in the {lookupTableCodeColumn} column of the domain table ...')
+        print(f'{indent}*** {lookupsNotFoundCount} {"" if nullValuesCount == 0 else "non-null "}code{"" if lookupsNotFoundCount == 1 else "s"} '
+                    f'in the {mainDataFrameCodeJoinColumn} column do not exist in the lookup table ...')
 
         dfLookupNotFoundGrouped = dfLookupNotFound.groupby(mainDataFrameCodeJoinColumn, as_index=False).count()
 
@@ -634,19 +632,19 @@ def resolveLookupCodes(df, context, dfLookup, mainDataFrameCodeJoinColumn,
                 print(f'{indent}  *** {row.values[0]} : {row.values[1]}')
 
     if nullValuesCount == 0 :
-        print(f'{indent}.. all rows in the main table {mainDataFrameCodeJoinColumn} column have a non-null value')
+        print(f'{indent}.. all codes in the {mainDataFrameCodeJoinColumn} column are non-null')
     else :
-        print(f'{indent}*** {nullValuesCount} row{"" if nullValuesCount == 1 else "s"} in the main table have'
-                    f' a null value in the {mainDataFrameCodeJoinColumn} column ...')
+        print(f'{indent}+++ {nullValuesCount} code{"" if nullValuesCount == 1 else "s"} '
+                    f'in the {mainDataFrameCodeJoinColumn} column are null')
 
         dfNullValuesGrouped = dfNullValues.groupby('Postcode_area', as_index=False).count()
 
-        print(f'{indent}*** {dfNullValuesGrouped.shape[0]} Postcode Area{"" if nullValuesCount == 1 else "s"} have null codes:')
+        print(f'{indent}+++ {dfNullValuesGrouped.shape[0]} Postcode Area{"" if nullValuesCount == 1 else "s"} have some null codes:')
         if verbose :
             for index, row in dfNullValuesGrouped[0:10].iterrows() :
-                print(f'{indent}  *** {row.values[0]:2.2} : {row.values[1]}')
+                print(f'{indent}  +++ {row.values[0]:2.2} : {row.values[1]}')
             if dfNullValuesGrouped.shape[0] > 10 :
-                print(f'{indent}  *** .. and {dfNullValuesGrouped.shape[0] - 10} more ..')
+                print(f'{indent}  +++ .. and {dfNullValuesGrouped.shape[0] - 10} more ..')
 
     if verbose :
         if reportCodeUsage > 0 :
@@ -697,13 +695,13 @@ def addPostCodeBreakdown(df, verbose=False) :
 
     dfBadArea = dfBreakdown [ dfBreakdown.Area != dfBreakdown.Postcode_area ]
     if dfBadArea.shape[0] != 0 :
-        print('** Bad area extraction from postcode')
+        print('*** Bad area extraction from postcode')
         print(dfBadArea)
         return pd.DataFrame()
 
     dfBadDistrict = dfBreakdown[ dfBreakdown.Area + dfBreakdown.District != dfBreakdown.Outward ]
     if dfBadDistrict.shape[0] != 0 :
-        print('** Bad district extraction from postcode')
+        print('*** Bad district extraction from postcode')
         print(dfBadDistrict)
         return pd.DataFrame()
 

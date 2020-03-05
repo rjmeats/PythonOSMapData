@@ -585,89 +585,89 @@ def resolveLookupCodes(df, dfLookup, mainDataFrameCodeJoinColumn,
     print(f'  .. checking "{mainDataFrameCodeJoinColumn}" column lookups ..')
     indent = ' ' * 5        # For formatting progress messages.
 
-    # Remeber the columns we started with, so we can do some pruning of temporary columns later.
-    originalColumnNames = list(df.columns)
+    # First, see if there are unreferenced values in the lookup table - not necessarily a problem, just for interest.
+    # Right-outer-join the main table and lookup table to find unused domain values in the lookup data. 
+    dfRightOuterJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='right')
 
-    # To here
+    reportOnUnusedLookups(dfRightOuterJoin, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, lookupTableValueColumn, 
+                          indent, verbose)
 
-    # Outer join the main table and lookup table to find unused domain values in the lookup, and pull out records
-    # with no value for the main table. We will only have one record per unused value. 
-    dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='right')
-    dfUnusedLookup = dfJoin[ dfJoin[mainDataFrameCodeJoinColumn].isnull() ][[lookupTableCodeColumn, lookupTableValueColumn]]
+    # Now do the main join, the same as above but Left-outer-join instead of Right-. If there are code in the 
+    # main data which don't have a value in the lookup table, these will generate rows where the lookup code
+    # column is null and the main table code column is not null.
+    dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='left')
 
-    unusedLookupsCount = dfUnusedLookup.shape[0]
+    reportOnReferentialIntegrity(dfJoin, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, indent, verbose)
+    reportOnNullCodes(dfJoin, mainDataFrameCodeJoinColumn, indent) 
+
+    # The Pandas merge operation results in the 'code' column from both dataframes appearing in the merged dataframe. We
+    # drop the 'code' column from the lookup table.
+    dfJoin.drop(columns=[lookupTableCodeColumn], inplace=True)
+
+    return dfJoin
+
+def reportOnUnusedLookups(dfRightOuterJoin, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, lookupTableValueColumn, 
+                            indent='', verbose=False) :
+    '''Report on codes in the lookup table that are not referenced in the main data table.'''
+
+    # The dataframe passed in has been produced using an outer join so that for each unused code in the lookup table, there will
+    # be a row in the joined dataframe which have null values for the columns generated from the main dataframe.
+    dfUnusedLookups = dfRightOuterJoin[ dfRightOuterJoin[mainDataFrameCodeJoinColumn].isnull() ][[lookupTableCodeColumn, lookupTableValueColumn]]
+    unusedLookupsCount = dfUnusedLookups.shape[0]
     if unusedLookupsCount == 0 :
         print(f'{indent}.. all values in the lookup table are referenced in the {mainDataFrameCodeJoinColumn} column ..')
     else :
         print(f'{indent}.. {unusedLookupsCount} '
                     f'{"code in the lookup table is" if unusedLookupsCount == 1 else "codes in the lookup table are"} '
-                    f'not referenced in the {mainDataFrameCodeJoinColumn} column ..')
+                    f'not referenced in the {mainDataFrameCodeJoinColumn} column ..')        
         if verbose :
-            for index, row in dfUnusedLookup.iterrows() :
-                print(f'{indent}  - {row.values[0]} : {row.values[1]}')
+            # List out the unused values. NB need to access tuple fields by number, as column names have spaces in.
+            for row in dfUnusedLookups.itertuples(index=False) :
+                print(f'{indent}  - {row[0]} : {row[1]}')
 
-    # Outer join the main table and lookup table in the other direction to find referential integrity issues for 
-    # column values in the main table with no matching value in the lookup table. There will probably be multiple
-    # records having the same missing lookup value, so we need to do some grouping before reporting at an aggregate
-    # level.
-    dfJoin = pd.merge(df, dfLookup, left_on=mainDataFrameCodeJoinColumn, right_on=lookupTableCodeColumn, how='left')
-    dfLookupNotFound = dfJoin[ dfJoin[lookupTableCodeColumn].isnull() & dfJoin[mainDataFrameCodeJoinColumn].notnull() ] [['Postcode', mainDataFrameCodeJoinColumn]]
 
-    dfNullValues = df[ df[mainDataFrameCodeJoinColumn].isnull() ] [['Postcode', 'Postcode_area']]
+def reportOnReferentialIntegrity(dfJoin, mainDataFrameCodeJoinColumn, lookupTableCodeColumn, indent='', verbose=False) :
+    '''Report on cases where lookup of a code in a lookup table failed.'''
+    
+    dfRIFailed = dfJoin[lookupTableCodeColumn].isnull() & dfJoin[mainDataFrameCodeJoinColumn].notnull()
+    dfLookupNotFound = dfJoin[ dfRIFailed ] [['Postcode', mainDataFrameCodeJoinColumn]]
 
+    # Report on referential integrity issues
     lookupsNotFoundCount = dfLookupNotFound.shape[0]
-    nullValuesCount = dfNullValues.shape[0]
     if lookupsNotFoundCount == 0 :
-        print(f'{indent}.. all {"" if nullValuesCount == 0 else "non-null "}codes in the {mainDataFrameCodeJoinColumn} column '
-                    f'exist in the lookup table')
+        print(f'{indent}.. all codes in the {mainDataFrameCodeJoinColumn} column exist in the lookup table')
     else :
-        print(f'{indent}*** {lookupsNotFoundCount} {"" if nullValuesCount == 0 else "non-null "}code{"" if lookupsNotFoundCount == 1 else "s"} '
-                    f'in the {mainDataFrameCodeJoinColumn} column do not exist in the lookup table ...')
+        print(f'{indent}*** some codes in the {mainDataFrameCodeJoinColumn} column do not exist in the lookup table ...')
 
-        dfLookupNotFoundGrouped = dfLookupNotFound.groupby(mainDataFrameCodeJoinColumn, as_index=False).count()
+        # Provide some info on how many codes don't match, broken down by code.
+        serNonMatchSummary = dfLookupNotFound[mainDataFrameCodeJoinColumn].value_counts()
+        for code, count in serNonMatchSummary.iteritems() :
+            print(f'{indent}  *** code = {code} : {count} cases')
 
-        print(f'{indent}*** {dfLookupNotFoundGrouped.shape[0]} distinct code value{"" if lookupsNotFoundCount == 1 else "s"} unmatched:')
-        if verbose :
-            for index, row in dfLookupNotFoundGrouped.iterrows() :
-                print(f'{indent}  *** {row.values[0]} : {row.values[1]}')
+def reportOnNullCodes(dfJoin, mainDataFrameCodeJoinColumn, indent='', verbose=False) :
+    '''Report on nulls in a code column used to drive lookups.'''
 
+    # Report on how many codes are null (and so won't have joined to the lookup table). If the data indicates
+    # that the postcode location quality is low, then we don't expect location coding to be present. So we have
+    # various messages to show depending on the number of nulls and whether they are related to location quality.
+    dfNullValues = dfJoin[ dfJoin[mainDataFrameCodeJoinColumn].isnull() ] [['Postcode', 'Postcode_area', 'Quality']]
+    nullValuesCount = dfNullValues.shape[0]
     if nullValuesCount == 0 :
         print(f'{indent}.. all codes in the {mainDataFrameCodeJoinColumn} column are non-null')
     else :
-        print(f'{indent}+++ {nullValuesCount} code{"" if nullValuesCount == 1 else "s"} '
-                    f'in the {mainDataFrameCodeJoinColumn} column are null')
-
-        dfNullValuesGrouped = dfNullValues.groupby('Postcode_area', as_index=False).count()
-
-        print(f'{indent}+++ {dfNullValuesGrouped.shape[0]} Postcode Area{"" if nullValuesCount == 1 else "s"} have some null codes:')
-        if verbose :
-            for index, row in dfNullValuesGrouped[0:10].iterrows() :
-                print(f'{indent}  +++ {row.values[0]:2.2} : {row.values[1]}')
-            if dfNullValuesGrouped.shape[0] > 10 :
-                print(f'{indent}  +++ .. and {dfNullValuesGrouped.shape[0] - 10} more ..')
-
-    if verbose :
-        if reportCodeUsage > 0 :
-            reportingColumns = ['Postcode', mainDataFrameCodeJoinColumn, lookupTableValueColumn]
-            dfReportGroup = dfJoin[reportingColumns] \
-                            .groupby([mainDataFrameCodeJoinColumn, lookupTableValueColumn], as_index=False).count()
-            print()
-            print(f'{dfReportGroup.shape[0]} different {mainDataFrameCodeJoinColumn} values in use:')
-            if dfReportGroup.shape[0] > reportCodeUsage :
-                print(f'{indent}.. listing the first {reportCodeUsage} cases.')
-            print()
-            for index, row in dfReportGroup[0:reportCodeUsage].iterrows() :
-                print(f'{indent}  {row.values[0]:10.10} {row.values[1]:30.30} {row.values[2]:7} rows')
-            if dfReportGroup.shape[0] > reportCodeUsage :
-                print(f'{indent}.. and {dfReportGroup.shape[0] - reportCodeUsage} more cases ..')
-
-    outputColumnNames = originalColumnNames + [lookupTableValueColumn]
-    return dfJoin[outputColumnNames]
-
+        # How many of the nulls relate to postcodes which don't have location data, as indicated by the Quality field ?
+        locatedButNullCount = (~dfNullValues.Quality.isin([60,90])).sum()
+        notLocatedCount = nullValuesCount - locatedButNullCount
+        print(f'{indent}.. {notLocatedCount} codes in the {mainDataFrameCodeJoinColumn} column are null '
+                f'but have known location quality issues')
+        if locatedButNullCount > 0 :
+            print(f'{indent}++ {locatedButNullCount} other codes in the {mainDataFrameCodeJoinColumn} column are null')
 
 #############################################################################################
 
 def addPostCodeBreakdown(df, verbose=False) :
+    '''Breakdown the postcode values in the dataframe into constituent parts and adds them as new columns to 
+       the dataframe. Returns the modified dataframe, or an empty dataframe if there is an unexpected postcode pattern.'''
 
     dfBreakdown = df[['Postcode', 'Postcode_area']].copy()
 
@@ -712,6 +712,9 @@ def addPostCodeBreakdown(df, verbose=False) :
 #############################################################################################
 #############################################################################################
 #############################################################################################
+
+### Remaining stuff is remnants to be sorted out/deleted.
+
 
 # Pulled out of addPostcodeBreakdown - should be part of some sort of analysis option.
 def examinePostcodePatterns(df, verbose=True) :
@@ -917,4 +920,24 @@ def xaddPostCodeBreakdown(df, verbose=False) :
     #print(f'.. extra postcode columns concatenated ..')
 
     ...
+
+
+Reporting code usage
+
+    verbose = True
+    if verbose :
+        if reportCodeUsage > 0 :
+            reportingColumns = ['Postcode', mainDataFrameCodeJoinColumn, lookupTableValueColumn]
+            dfReportGroup = dfJoin[reportingColumns].groupby([mainDataFrameCodeJoinColumn, lookupTableValueColumn], as_index=False).count()
+            print()
+            print(f'{dfReportGroup.shape[0]} different {mainDataFrameCodeJoinColumn} values in use:')
+            if dfReportGroup.shape[0] > reportCodeUsage :
+                print(f'{indent}.. listing the first {reportCodeUsage} cases.')
+            print()
+            for index, row in dfReportGroup[0:reportCodeUsage].iterrows() :
+                print(f'{indent}  {row.values[0]:10.10} {row.values[1]:30.30} {row.values[2]:7} rows')
+            if dfReportGroup.shape[0] > reportCodeUsage :
+                print(f'{indent}.. and {dfReportGroup.shape[0] - reportCodeUsage} more cases ..')
+
+
 """

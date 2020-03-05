@@ -89,6 +89,13 @@ def generateDataFrameFromSourceData(dataDir, tmpDir, verbose=False) :
     catCols = [ 'Postcode_area', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 'Admin_ward_code', 
                 'Post Town', 'Country Name', 'County Name', 'District Name', 'Ward Name', 
                 'Pattern', 'Outward', 'District', 'Inward']
+    # Check these columns all exist
+    existingCols = set(catCols).intersection(set(df.columns))
+    if len(existingCols) != len(catCols) :
+        print(f'*** Column(s) missing from expected structure - see earlier failures')
+        print(f'*** missing : {set(catCols) - set(df.columns)}')
+        return dfEmpty
+
     df[catCols] = df[catCols].astype('category')
     showTiming()
 
@@ -236,6 +243,11 @@ def loadPostcodeAreasFile(postcodeAreasFile) :
             print(f'*** Unexpected column heading "{dfAreas.columns[n]}" for the Postcode Areas file - expected "{name}"')
             return pd.DataFrame()
 
+    # Check we have a good primary key
+    if not checkPrimaryKey('Postcode areas dataframe', dfAreas, 'Postcode Area') :
+        return pd.DataFrame()
+    print(f'.. checked postcode areas primary key')
+
     return dfAreas
 
 # For some reason, the code mapping spreadsheet provided by the OS includes ONS County/District/Borough/Ward mappings, but
@@ -266,6 +278,11 @@ def loadCountyCodes(codelistFile) :
 
     # Remove the word 'County' from the end of the county name, e.g. 'Essex  County' => 'Essex'
     dfCountyCodes['County Name'] = dfCountyCodes['County Name'].str.strip().str.replace(' County', '').str.strip()
+
+    # Check we have a good primary key
+    if not checkPrimaryKey('County codes dataframe', dfCountyCodes, 'County Code') :
+        return pd.DataFrame()
+    print(f'.. checked county codes primary key')
 
     return dfCountyCodes
 
@@ -306,6 +323,11 @@ def loadDistrictCodes(codelistFile) :
     dfDistrictCodes = pd.concat(dfList, ignore_index=True)
     print(f'.. found {dfDistrictCodes.shape[0]} combined district codes in the Code List spreadsheet')
 
+    # Check we have a good primary key
+    if not checkPrimaryKey('District codes dataframe', dfDistrictCodes, 'District Code') :
+        return pd.DataFrame()
+    print(f'.. checked district codes primary key')
+
     return dfDistrictCodes
 
 def loadWardCodes(codelistFile) :
@@ -344,6 +366,11 @@ def loadWardCodes(codelistFile) :
         print(f'   .. deleting records for {dfDET.sum()} ward names ending in "(DET)"')
         dfWardCodes.drop(dfWardCodes[dfDET].index, inplace=True)
         print(f'  .. leaving {dfWardCodes.shape[0]} combined ward codes')
+
+    # Check we have a good primary key
+    if not checkPrimaryKey('Ward codes dataframe', dfWardCodes, 'Ward Code') :
+        return pd.DataFrame()
+    print(f'.. checked ward codes primary key')
 
     return dfWardCodes
 
@@ -413,8 +440,9 @@ def loadFilesIntoDataFrame(tmpDir, verbose=False) :
     if df.empty :
         return dfEmpty
 
-    if not checkPostcodesPrimaryKey(df) :
+    if not checkPrimaryKey('Main postcodes dataframe', df, 'Postcode') :
         return dfEmpty
+    print(f'.. checked postcodes primary key')
 
     return df
 
@@ -499,18 +527,20 @@ def loadCSVDataFiles(CSVDataDirPath, verbose=False):
 
     return dfCombined
 
-def checkPostcodesPrimaryKey(df) :
-    '''Check whether the Postcode column contains any duplicates or nulls. Returns True/False.'''
+#############################################################################################
+
+def checkPrimaryKey(context, df, pkColumn) :
+    '''Check whether the primary key column of a dataframe contains any duplicates or nulls. Returns True/False.'''
         
-    if not df['Postcode'].is_unique :
-        print(f'*** Found duplicate postcodes')
-        print(df['Postcode'].value_counts())
+    if not df[pkColumn].is_unique :
+        print(f'*** Found duplicate "{pkColumn}" column values in {context}')
+        print(df[pkColumn].value_counts())
         return False
 
     # Check for any null postcodes. isnull() returns an array of booleans, which should all be False.
-    nullCount = df['Postcode'].isnull().sum()
+    nullCount = df[pkColumn].isnull().sum()
     if nullCount != 0 :
-        print(f'*** Found {nullCount} null postcodes.')
+        print(f'*** Found {nullCount} null "{pkColumn}" column values in {context} .')
         return False
 
     return True
@@ -519,7 +549,8 @@ def checkPostcodesPrimaryKey(df) :
 
 def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
     '''High level control of the addition of columns containing values looked up using the codes
-       already in the table. Returns a dataframe with the additional columns.'''
+       already in the table. Returns a dataframe with the additional columns, or an empty dataframe
+       if there are serious errors.'''
 
     dfDenormalised = df.copy()
 
@@ -543,24 +574,23 @@ def addCodeLookupColumns(df, dictLookupdf, verbose=False) :
 
     for parameters in [ areasParameters, countriesParameters, countiesParameters, districtsParameters, wardsParameters ] :
         dfDenormalised = resolveLookupCodes(dfDenormalised, *parameters, verbose=verbose)
+        if dfDenormalised.empty :
+            return pd.DataFrame()
 
     return dfDenormalised
 
 def resolveLookupCodes(df, context, dfLookup, mainDataFrameCodeJoinColumn, 
                           lookupTableCodeColumn, lookupTableValueColumn, 
                           reportCodeUsage=10, verbose=False) :
+    '''Performs the detailed processing of adding a 'value' column for a specified code column, using a lookup dataframe.
+       Also does some referential integrity checking and null-value checking. Returns the dataframe with the additional
+       'values' column.'''
 
     print(f'  .. checking {context} lookups ..')
-    indent = ' ' * 5
+    indent = ' ' * 5        # For formatting progress messages.
 
+    # Remeber the columns we started with, so we can do some pruning of temporary columns later.
     originalColumnNames = list(df.columns)
-
-    # Check lookup for unique keys
-    uniquenessOK = checkAllUniqueValues(context, dfLookup, lookupTableCodeColumn)
-    if not uniquenessOK :
-        return df
-
-    print(f'{indent}.. no duplicate codes in the {lookupTableCodeColumn} lookup table ..')
 
     # Outer join the main table and lookup table to find unused domain values in the lookup, and pull out records
     # with no value for the main table. We will only have one record per unused value. 
@@ -636,18 +666,6 @@ def resolveLookupCodes(df, context, dfLookup, mainDataFrameCodeJoinColumn,
     outputColumnNames = originalColumnNames + [lookupTableValueColumn]
     return dfJoin[outputColumnNames]
 
-def checkAllUniqueValues(context, df, columnName) :
-
-    allUnique = False
-    try :
-        df.set_index(columnName, verify_integrity=True)
-        allUnique = True
-    except ValueError as e :
-        allUnique = False
-        print()
-        print(f'*** Found duplicate values in {context} in column {columnName}: {e}')
-
-    return allUnique
 
 #############################################################################################
 

@@ -423,7 +423,7 @@ def restrictToGridRectangle(df, bottomLeft, topRight) :
     dfArea = dfArea [ (dfArea['Northings'] >= bottomLeft[1]) & (dfArea['Northings'] <= topRight[1])]
     return dfArea
 
-def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
+def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False, displayPlot=True) :
     '''Set up a plot of all postcodes in Great Britain.'''
 
     if plotter == 'TK' :
@@ -437,13 +437,13 @@ def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False) :
     title = 'Great Britain'
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
-    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType)
+    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, displayPlot=displayPlot)
     
     # Save the image in a file.
     if savefilelocation != None :
         plotterObject.writeImageArrayToFile(f'{savefilelocation}/postcodes.allGB.png', img)
 
-    return 0
+    return img
 
 # Get the town name associated with the postcode area, from the relevant column in the first row of the
 # filtered dataframe. Need to work on reset-index version of the dataframe (not saved) in order to be
@@ -455,7 +455,7 @@ def getPostTown(df) :
     town = df.reset_index().loc[0,'Post Town']
     return town
 
-def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
+def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None, verbose=False, displayPlot=True) :
     '''Set up a plot of the postcodes in the specified postcode area.'''
 
     # Filter the dataframe to just hold postcodes in this postcode area
@@ -470,14 +470,14 @@ def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None
 
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
-    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType)
+    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, displayPlot=displayPlot)
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.pa.{postcodeArea.lower()}.png'
         plotterObject.writeImageArrayToFile(filename, img)
 
-    return 0
+    return img
 
-def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbose=False) :
+def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbose=False, displayPlot=True) :
     '''Set up a plot of the postcodes in the specified National Grid square.'''
 
     sq = ng.dictGridSquares[sqName.upper()]        
@@ -518,12 +518,12 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
 
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
-    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType)
+    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, displayPlot=displayPlot)
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.ng.{sqName.lower()}.png'
         plotterObject.writeImageArrayToFile(filename, img)
 
-    return 0
+    return img
 
 def getPostcodeLocationDescription(dfpc, verbose=False) :
     '''Extract fields from a dataframe expected to containing a record for a single postcode, and use them to briefly describe its location.'''
@@ -559,7 +559,7 @@ def getPostcodeLocationDescription(dfpc, verbose=False) :
 
     return desc
 
-def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False) :
+def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=False, displayPlot=True) :
     '''Set up a plot of the postcodes within a square centred on a specific postcode.'''
 
     formattedPostcode = normalisePostcodeFormat(postcode)
@@ -604,13 +604,13 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
     img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=formattedPostcode, 
-                                colouringAreaType=colouringAreaType)
+                                colouringAreaType=colouringAreaType, displayPlot=displayPlot)
 
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.pc.{formattedPostcode.replace(" ", "").lower()}.png'
         plotterObject.writeImageArrayToFile(filename, img)
 
-    return 0
+    return img
 
 #############################################################################################
 

@@ -178,7 +178,7 @@ class postcodesPlotter() :
         self.canvasWidth = canvasWidth
 
     def plotSpecific(self, df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
-                colouringAreaType = 'pa', keyPostcode=None) :
+                colouringAreaType = 'pa', keyPostcode=None, displayPlot=True) :
 
         # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too
         # early ? Especially noticeable for National Grid squares ought to br 100 x 100, but end up showing as larger.
@@ -249,7 +249,8 @@ class postcodesPlotter() :
             hexStringColour = self.rgbTupleToHexString(rgbTupleColour)
             self._highlightKeyPostcode(esKey, nsKey, keyPostcode, areaKey, rgbTupleColour, hexStringColour)
 
-        self._displayPlot()
+        if displayPlot :
+            self._displayPlot()
 
         return self._getImage()
 

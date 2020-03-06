@@ -1,8 +1,81 @@
-# Python reporting.
+'''
+Functions to report on data in the Pandas dataframe generated from Ordnance Survey 'Open Codepoint' postcodes data. 
+
+The entry points for external use are:
+
+    ????
+
+'''
 
 import pandas as pd
 
 # In progress.
+
+#############################################################################################
+
+def displayBasicDataFrameInfo(df, verbose=False) :
+    '''See what some basic pandas info calls show about the dataframe.'''
+
+    print()
+    print('################## type(df) #####################')
+    print()
+    print(type(df)) 
+    print()
+    print('################## df.shape #################')
+    print()
+    print(df.shape) 
+    print()
+    print('################## df.dtypes ##################')
+    print()
+    print(df.dtypes)
+    print()
+    print('################## df.index ##################')
+    print()
+    print(df.index)
+    print()
+    print('################## df.columns ##################')
+    print()
+    print(df.columns)
+    print()
+    print('################## df.info(null_counts=True) ##################')
+    print()
+    print(df.info(null_counts=True))
+    print()
+    print('################## df.memory_usage(Shallow/Deep/Diff) ##################')
+    print()
+    # Present the memory options as a set for ease of analysis.
+    m = pd.concat([df.memory_usage(deep=False), df.memory_usage(deep=True)], axis=1)
+    m = m.rename(columns = { 0: 'Shallow', 1: 'Deep' })
+    m['Diff'] = m['Deep'] - m['Shallow']
+    print(m)
+    print()
+
+    # To here
+    
+    print('################## df.describe(include=all) ##################')
+    print()
+    print(df.describe(include='all'))
+    print()
+    print('################## df.count() ##################')
+    print()
+    print(df.count())
+    print()
+    print('################## print(df) #####################')
+    print()
+    print(df)
+    print()
+    print('################## df.head() ##################')
+    print()
+    print(df.head())
+    print()
+    print('################## df.tail() ##################')
+    print()
+    print(df.tail())
+    print()
+
+    print('###################################################')
+
+    return 0
 
 #############################################################################################
 
@@ -44,57 +117,6 @@ def produceStats(df, verbose=False) :
 
     return 0
     
-#############################################################################################
-
-def displayBasicDataFrameInfo(df, verbose=False) :
-    '''See what some basic pandas info calls show about the dataframe.'''
-
-    print()
-    print('###################################################')
-    print('################## type and shape #################')
-    print()
-    print(f'type(df) = {type(df)} : df.shape : {df.shape}') 
-    print()
-    print('################## print(df) #####################')
-    print()
-    print(df)
-    print()
-    print('################## df.dtypes ##################')
-    print()
-    print(df.dtypes)
-    print()
-    print('################## df.info() ##################')
-    print()
-    print(df.info())
-    print()
-    print('################## df.head() ##################')
-    print()
-    print(df.head())
-    print()
-    print('################## df.tail() ##################')
-    print()
-    print(df.tail())
-    print()
-    print('################## df.index ##################')
-    print()
-    print(df.index)
-    print()
-    print('################## df.columns ##################')
-    print()
-    print(df.columns)
-    print()
-    print('################## df.describe() ##################')
-    print()
-    print(df.describe())
-    print()
-    print('################## df.count() ##################')
-    print()
-    print(df.count())
-    print()
-    print('###################################################')
-
-    return 0
-
 
 # Code point Open User Guide explains the Quality values as follows:
 # https://www.ordnancesurvey.co.uk/documents/product-support/user-guide/code-point-open-user-guide.pdf

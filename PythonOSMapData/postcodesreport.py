@@ -49,12 +49,15 @@ def displayBasicDataFrameInfo(df, verbose=False) :
     m['Diff'] = m['Deep'] - m['Shallow']
     print(m)
     print()
-
-    # To here
-    
-    print('################## df.describe(include=all) ##################')
+    print('################## df.describe() ##################')
     print()
-    print(df.describe(include='all'))
+    # Default is to show numeric columns.
+    print(df.describe())
+    print()
+    print('################## df.describe(include=\'category\').T ##################')
+    print()
+    # Show category-type columns, with .T switching the output round so we can see lots of columns.
+    print(df.describe(include='category').T)
     print()
     print('################## df.count() ##################')
     print()
@@ -64,20 +67,14 @@ def displayBasicDataFrameInfo(df, verbose=False) :
     print()
     print(df)
     print()
-    print('################## df.head() ##################')
-    print()
-    print(df.head())
-    print()
-    print('################## df.tail() ##################')
-    print()
-    print(df.tail())
-    print()
 
     print('###################################################')
 
     return 0
 
 #############################################################################################
+
+## To here
 
 # ???? To be redone.
 def produceStats(df, verbose=False) :

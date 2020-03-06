@@ -674,6 +674,7 @@ def addPostCodeBreakdown(df, verbose=False) :
     # First check that the postcode patterns present are the ones we expected.
     # In every case, the 'Inward' part consists of the last three characters (9XX), with the 'Outward' part
     # being the part before this.
+    print(f'  .. determining patterns ..')
     dfBreakdown['Pattern']  = dfBreakdown['Postcode'].str.strip().str.replace(r'[0-9]', '9').str.replace(r'[A-Z]', 'X')
     expectedPatterns = ['X9  9XX',
                         'X99 9XX',
@@ -689,10 +690,14 @@ def addPostCodeBreakdown(df, verbose=False) :
 
     # Split the postcode into Inward, Outward, and splot the Outward into Area and District.
     # NB Some Districts can include letters, e.g. E1W.
+    print(f'  .. producing Inward ..')
     dfBreakdown['Inward']   = dfBreakdown['Postcode'].str[-3:].str.strip()
+    print(f'  .. producing Outward ..')
     dfBreakdown['Outward']  = dfBreakdown['Postcode'].str[0:-3].str.strip()
+    print(f'  .. producing Area and District ..')
     dfBreakdown[['Area', 'District']]  = dfBreakdown['Outward'].str.extract(r'([A-Z][A-Z]?)([0-9].*)')
 
+    print(f'  .. validating results ..')
     dfBadArea = dfBreakdown [ dfBreakdown.Area != dfBreakdown.Postcode_area ]
     if dfBadArea.shape[0] != 0 :
         print('*** Bad area extraction from postcode')
@@ -710,234 +715,20 @@ def addPostCodeBreakdown(df, verbose=False) :
     return df
 
 #############################################################################################
-#############################################################################################
-#############################################################################################
 
-### Remaining stuff is remnants to be sorted out/deleted.
+# Main function for dev/test only. Expect to be invoked from main postcodes.py module normally,
+# allowing more flexible choice of locations via command line arguments, and caching resulting dataframe.
 
+if __name__ == '__main__' :
 
-# Pulled out of addPostcodeBreakdown - should be part of some sort of analysis option.
-def examinePostcodePatterns(df, verbose=True) :
-    # This is more like data examination than useful processing info. Do some other way.
-    if verbose :
+    dataDir = './OSData/Postcodes'      # Where the source data files are
+    tmpDir = dataDir + '/tmp2'          # Working area, for unzipping and caching
+    verbose = False
+
+    df = generateDataFrameFromSourceData(dataDir, tmpDir, verbose)
+    if df.empty :
         print()
-        print(f'.. Postcodes grouped by pattern ..')
-        dfG = df[['Postcode', 'Pattern']].groupby(['Pattern'], as_index=True).count()
+        print('*** No dataframe generated from source data.')
+    else :
         print()
-        print(dfG)
-        with pd.option_context('display.max_rows', 20000):
-            print()
-            print(f'.. Postcodes grouped by Area and Outward ..')
-            dfG = df[['Postcode', 'Postcode_area', 'Post Town', 'Outward']].groupby(['Postcode_area', 'Post Town', 'Outward'], as_index=True).count()
-            print()
-            print(dfG)
-            print()
-            print(f'.. Unique Districts per Area ..')
-            dfG = df[['Postcode', 'Postcode_area', 'Post Town', 'Outward']].groupby(['Postcode_area', 'Post Town'], as_index=True)['Outward'].nunique()
-            print()
-            print(dfG)
-
-#############################################################################################
-
-def displayBasicDataFrameInfo(df, verbose=False) :
-    '''See what some basic pandas info calls show about the dataframe.'''
-
-    print()
-    print('###################################################')
-    print('################## type and shape #################')
-    print()
-    print(f'type(df) = {type(df)} : df.shape : {df.shape}') 
-    print()
-    print('################## print(df) #####################')
-    print()
-    print(df)
-    print()
-    print('################## df.dtypes ##################')
-    print()
-    print(df.dtypes)
-    print()
-    print('################## df.info() ##################')
-    print()
-    print(df.info())
-    print()
-    print('################## df.head() ##################')
-    print()
-    print(df.head())
-    print()
-    print('################## df.tail() ##################')
-    print()
-    print(df.tail())
-    print()
-    print('################## df.index ##################')
-    print()
-    print(df.index)
-    print()
-    print('################## df.columns ##################')
-    print()
-    print(df.columns)
-    print()
-    print('################## df.describe() ##################')
-    print()
-    print(df.describe())
-    print()
-    print('################## df.count() ##################')
-    print()
-    print(df.count())
-    print()
-    print('###################################################')
-
-    return 0
-
-# Code point Open User Guide explains the Quality values as follows:
-# https://www.ordnancesurvey.co.uk/documents/product-support/user-guide/code-point-open-user-guide.pdf
-# 
-# 10 Within the building of the matched address closest to the postcode mean determined automatically by Ordnance Survey.
-# 20 As above, but determined by visual inspection by NRS.
-# 30 Approximate to within 50 m of true position (postcodes relating to developing sites may be within 100 m of true position).
-# 40 The mean of the positions of addresses previously matched in PALF but that have subsequently been deleted or recoded (very rarely used).
-# 50 Estimated position based on surrounding postcode coordinates, usually to 100 m resolution, but 10 m in Scotland.
-# 60 Postcode sector mean (direct copy from PALF). See glossary for additional information.
-# 90 No coordinates available.
-#
-# Observation of data shows that:
-# - for values of 60 and 90, District and Ward information is always missing
-# - for values of 90, Eastings and Northings values are set to 0
-# - [County information is much more variable - absent for all 60 and 90 examples, but also in many 10,20,30 and 50.]
-# for values 10,20,30,50 all information is present
-# No cases of 40 were present in the data.
-# Nearly all data is assigned as 10, with a small amount of 50 and 90, and traces of 20,30,60
-
-# Perhaps redo this as a check of expectations rather than a report. (Or have a separate report.)
-def examineLocationColumns(df, verbose=False) :
-
-    if not verbose :
-        return
-
-    dfG = df[ ['Postcode', 'Postcode_area', 'Quality', 'Eastings', 'Northings', 'County Name', 'District Name', 'Ward Name'] ].groupby('Quality').count()
-    print()
-    print('Counts of non-null values by location quality:')
-    print()
-    print(dfG)
-
-    dfG = df[ ['Postcode', 'Postcode_area', 'Quality', 'Eastings', 'Northings'] ].groupby('Quality').agg(
-                Cases = ('Quality', 'count'),
-                Min_E = ('Eastings', 'min'),
-                Max_E = ('Eastings', 'max'),
-                Min_N = ('Northings', 'min'),
-                Max_N = ('Northings', 'max')
-                    )
-    print()
-    print('Eastings and Northing ranges by location quality:')
-    print()
-    print(dfG)
-
-    print()
-    print('Quality=60 examples')
-    print()
-    print(df[ df['Quality'] == 60][0:10])
-    print()
-    print('Quality=90 examples:')
-    print()
-    print(df[ df['Quality'] == 90][0:10])
-
-
-r"""
-# Original code for breaking down / analysing postcode values, using .apply
-# (which invokes getPattern for every row).
-# Runs very slowly compared to replacement code operating at column-level via '.str'
-# functions.
-
-rowsProcessed = 0
-xexpectedPatterns = [
-    'X9##9XX',
-    'X99#9XX',
-    'X9X#9XX',
-    'XX9#9XX',
-    'XX999XX',
-    'XX9X9XX'
-]
-
-import re
-pcDigitPattern = re.compile('[0-9]')
-pcLetterPattern = re.compile('[A-Z]')
-pcSpacePattern = re.compile(r'\s')
-
-# Can this be done using the replace(re)/extract(re) string operation on a column ? https://pandas.pydata.org/pandas-docs/stable/user_guide/text.html
-# Might be much faster.
-def getPattern(row) :
-
-    global rowsProcessed
-
-    # print(row)
-    pc = row['Postcode']
-    area = row['Postcode_area']
-
-    pattern = pcDigitPattern.sub('9', pc)
-    pattern = pcLetterPattern.sub('X', pattern)
-    pattern = pcSpacePattern.sub('#', pattern)          # dfpc['Postcode'].str.strip().str.replace(r'[0-9]', '9').str.replace(r'[A-Z]', 'X').str.replace(r'\s', '#')
-
-    # Overall pattern should be one of 6 known ones
-    
-    if pattern not in expectedPatterns :
-        print(f'*** unexpected pattern for {pc} : {pattern}')
-
-    # inward = last three digits
-    # outward = the rest
-    # outward part from the first digit onwards = district
-    # remainder of outward part is the area code, and should match the value already provded
-    inward = pc[-3:].strip()            # dfpc['Postcode'].str[-3:].str.strip()
-    outward = pc[0:-3].strip()          # dfpc['Postcode'].str[0:-3].str.strip()
-    district = ''                       # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[A-Z]', '')
-    a = ''                              # dfpc['Postcode'].str[0:-3].str.strip().str.replace(r'[0-9]', '')
-    for i, c in enumerate(outward) :
-        if c.isdigit() :
-            district = outward[i:]
-            break
-        else :
-            a += c
-
-    if a != area :
-        print(f'*** area != area for {pc} : {a} : {area}')
-
-    rowsProcessed += 1
-    if rowsProcessed % 100000 == 0 :
-        print(f'.. processed {rowsProcessed} postcode patterns ..')
-    return { 'Pattern' : pattern, 'Outward' : outward, 'District' : district, 'Inward' : inward }
-
-
-def xaddPostCodeBreakdown(df, verbose=False) :
-
-    global rowsProcessed
-
-    # Look at each postcode and convert to a pattern, extract subcomponents of the postcode into separate columns
-    # NB This takes a few minutes for the full set of rows.
-
-    #dfBreakdown = df.copy()
-    #rowsProcessed = 0
-    # extradf = dfBreakdown[['Postcode', 'Post Town', 'Postcode_area']].apply(getPattern, axis=1, result_type='expand')      # NB This adds to df too
-    #print(f'Concatenating extra postcode columns ..')
-    #df = pd.concat([dfBreakdown, extradf], axis='columns')
-    #print(f'.. extra postcode columns concatenated ..')
-
-    ...
-
-
-Reporting code usage
-
-    verbose = True
-    if verbose :
-        if reportCodeUsage > 0 :
-            reportingColumns = ['Postcode', mainDataFrameCodeJoinColumn, lookupTableValueColumn]
-            dfReportGroup = dfJoin[reportingColumns].groupby([mainDataFrameCodeJoinColumn, lookupTableValueColumn], as_index=False).count()
-            print()
-            print(f'{dfReportGroup.shape[0]} different {mainDataFrameCodeJoinColumn} values in use:')
-            if dfReportGroup.shape[0] > reportCodeUsage :
-                print(f'{indent}.. listing the first {reportCodeUsage} cases.')
-            print()
-            for index, row in dfReportGroup[0:reportCodeUsage].iterrows() :
-                print(f'{indent}  {row.values[0]:10.10} {row.values[1]:30.30} {row.values[2]:7} rows')
-            if dfReportGroup.shape[0] > reportCodeUsage :
-                print(f'{indent}.. and {dfReportGroup.shape[0] - reportCodeUsage} more cases ..')
-
-
-"""
+        print(df)

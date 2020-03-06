@@ -20,6 +20,7 @@ import pandas as pd
 # Local Python files to import
 import postcodesgeneratedf as pcgen     # To populate a dataframe from source data files
 import postcodesplot as pcplot          # To handle details of plotting postcode-based maps
+import postcodesreport as pcreport   # To handle details of plotting postcode-based maps
 import nationalgrid as ng               # To handle OS National Grid squares
 
 #############################################################################################
@@ -128,46 +129,6 @@ def saveDataframeAsCSV(df, postcodeArea='all', outDir=None, verbose=False) :
 
     return 0
 
-#############################################################################################
-
-# ???? To be redone.
-def produceStats(df, verbose=False) :
-
-    print(f'############### Grouping by PostcodeArea, all columns ###############')
-    print()
-    dfAreaCounts = df.groupby('Postcode_area').count()
-    print(f'Shape is {dfAreaCounts.shape}')
-    print()
-    print(dfAreaCounts)
-
-    groupByColumns = [ 'Postcode_area', 'Quality', 'Country_code', 'Admin_county_code', 'Admin_district_code', 
-                        'Admin_district_code', 'Admin_ward_code' ]
-
-    # Just show counts of each distinct value, column by column
-    for groupByColumn in groupByColumns :
-        # Need a specific column to count, otherwise just get list of group-by-column values with no counts.
-        print()
-        print(f'############### Grouping by {groupByColumn}, count only ###############')
-        print()
-        dfDistinctColumnValueCounts = df.assign(count=1)[[groupByColumn, 'count']].groupby(groupByColumn).count()
-        print(f'Shape is {dfDistinctColumnValueCounts.shape}')
-        print()
-        print(dfDistinctColumnValueCounts)
-        print(dfDistinctColumnValueCounts[0])
-        print(dfDistinctColumnValueCounts[1])
-        
-
-    # Just PostcodeArea = shows that just a list of distinct values is returned when grouping a column with itself.
-    dfAreaCounts = df[['Postcode_area']].groupby('Postcode_area').count()
-    print()
-    print(f'############### Grouping by PostcodeArea with itself ###############')
-    print()
-    print(f'Shape is {dfAreaCounts.shape}')
-    print()
-    print(dfAreaCounts)
-
-    return 0
-    
 #############################################################################################
 
 def displayPostcodeInfo(df, postcode='NG2 6AG', verbose=False) :
@@ -825,7 +786,7 @@ def processCommand(parsedArgs) :
         elif parsedArgs.cmd == 'info' :
             status = displayPostcodeInfo(df, parsedArgs.postcode, verbose)
         elif parsedArgs.cmd == 'stats' :
-            status = produceStats(df, verbose)
+            status = pcreport.produceStats(df, verbose)
         elif parsedArgs.cmd == 'plot' :
             # Work out how the 'place' argument from the command line is interpreted as a place type and value.
             (placeType, placeValue) = extractPlaceInfoFromPlaceArgs(df, parsedArgs.place, verbose)
@@ -845,7 +806,7 @@ def processCommand(parsedArgs) :
                     print(f'Plot {i} of {iterations}')
                 status = plotPlace(df, placeType, placeValue, parsedArgs.plotter, parsedArgs.outdir, verbose=verbose)
         elif parsedArgs.cmd == 'df_info' :
-            status = pcgen.displayBasicDataFrameInfo(df, verbose)
+            status = pcreport.displayBasicDataFrameInfo(df, verbose)
         else :
             print(f'Unrecognised sub-command: {parsedArgs.cmd}')
             status = 1

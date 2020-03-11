@@ -177,8 +177,8 @@ class postcodesPlotter() :
         self.canvasHeight = canvasHeight
         self.canvasWidth = canvasWidth
 
-    def plotSpecific(self, df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
-                colouringAreaType = 'pa', keyPostcode=None, displayPlot=True) :
+    def generateImage(self, df, title=None, canvasHeight=800, bottomLeft=(0,0), topRight=(700000,1250000), density=1, 
+                colouringAreaType = 'pa', keyPostcode=None) :
 
         # ???? NB these dimensions include the margin - not aware of this aspect here. Is margin been defined too
         # early ? Especially noticeable for National Grid squares ought to br 100 x 100, but end up showing as larger.
@@ -249,11 +249,6 @@ class postcodesPlotter() :
             hexStringColour = self.rgbTupleToHexString(rgbTupleColour)
             self._highlightKeyPostcode(esKey, nsKey, keyPostcode, areaKey, rgbTupleColour, hexStringColour)
 
-        if displayPlot :
-            self._displayPlot()
-
-        return self._getImage()
-
     def _useBulkProcessing(self) :
         return False
 
@@ -266,10 +261,10 @@ class postcodesPlotter() :
     def _highlightKeyPostcode(self, esKey, nsKey, keyPostcode, areaKey, rgbTupleColour, hexStringColour) :
         pass
 
-    def _getImage(self) :
+    def getImage(self) :
         return None
 
-    def _displayPlot(self) :
+    def displayPlot(self) :
         pass
 
     def writeImageArrayToFile(self, filename, img) :
@@ -305,10 +300,10 @@ class TKPostcodesPlotter(postcodesPlotter) :
         self.master.title(title)
         self.w.pack()
 
-    def _displayPlot(self) :
+    def displayPlot(self) :
         mainloop()
 
-    def _getImage(self) :
+    def getImage(self) :
         return None
 
     def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
@@ -369,7 +364,7 @@ class CV2PostcodesPlotter(postcodesPlotter) :
         self.imgLookupIndex = np.full((canvasHeight+2, canvasWidth+2), 0, dtype='int32')   # +2s partly because of size of circle,
         # but also getting some out of bounds errors before [-1,0,1] adjustment was there - because ????
 
-    def _displayPlot(self) :
+    def displayPlot(self) :
         # For CV2 we need to reverse the colour ordering of the array to BGR
         if self.title == '' :
             self.title = 'Title'
@@ -379,8 +374,8 @@ class CV2PostcodesPlotter(postcodesPlotter) :
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    def _getImage(self) :
-        return self.img
+    def getImage(self) :
+        return self.convertToBGR(self.img)      # Why need to do convert ????
 
     def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
         #circle radius = 0 == single pixel. 
@@ -456,12 +451,12 @@ class BokehPostcodesPlotter(postcodesPlotter) :
 
         self.bkplot = figure(title=title, plot_height=canvasHeight, plot_width=canvasWidth, x_axis_label='E', y_axis_label='N')
 
-    def _displayPlot(self) :
+    def displayPlot(self) :
         print()
         print('.. displaying Bokeh plot ..')
         show(self.bkplot)
 
-    def _getImage(self) :
+    def getImage(self) :
         return None
 
     def _useBulkProcessing(self) :
@@ -508,13 +503,13 @@ class PlotlyPostcodesPlotter(postcodesPlotter) :
     def _initialisePlot(self, dfSlice, title, canvasHeight, canvasWidth) :
         super()._initialisePlot(dfSlice, title, canvasHeight, canvasWidth)
 
-    def _displayPlot(self) :
+    def displayPlot(self) :
         print()
         print('.. displaying Plotly plot ..')
         self.fig.show()
         self.fig.write_html('plotly.html', auto_open=True)
 
-    def _getImage(self) :
+    def getImage(self) :
         return None
 
     def _useBulkProcessing(self) :

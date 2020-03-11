@@ -437,8 +437,13 @@ def plotAllGB(df, plotter='CV2', savefilelocation=None, verbose=False, displayPl
     title = 'Great Britain'
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
-    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, displayPlot=displayPlot)
+    plotterObject.generateImage(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType)
     
+    img = plotterObject.getImage()
+
+    if displayPlot :
+        plotterObject.displayPlot()
+
     # Save the image in a file.
     if savefilelocation != None :
         plotterObject.writeImageArrayToFile(f'{savefilelocation}/postcodes.allGB.png', img)
@@ -470,7 +475,13 @@ def plotPostcodeArea(df, postcodeArea='TQ', plotter='CV2', savefilelocation=None
 
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
-    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, displayPlot=displayPlot)
+    plotterObject.generateImage(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType)
+
+    img = plotterObject.getImage()
+
+    if displayPlot :
+        plotterObject.displayPlot()
+        
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.pa.{postcodeArea.lower()}.png'
         plotterObject.writeImageArrayToFile(filename, img)
@@ -518,7 +529,13 @@ def plotGridSquare(df, sqName='TQ', plotter='CV2', savefilelocation=None, verbos
 
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
-    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType, displayPlot=displayPlot)
+    plotterObject.generateImage(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, colouringAreaType=colouringAreaType)
+
+    img = plotterObject.getImage()
+
+    if displayPlot :
+        plotterObject.displayPlot()
+        
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.ng.{sqName.lower()}.png'
         plotterObject.writeImageArrayToFile(filename, img)
@@ -603,8 +620,13 @@ def plotPostcode(df, postcode, plotter='CV2', savefilelocation=None, verbose=Fal
 
     colouringAreaType = 'pa'
     plotterObject = pcplot.getPlotter(plotter)
-    img = plotterObject.plotSpecific(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=formattedPostcode, 
-                                colouringAreaType=colouringAreaType, displayPlot=displayPlot)
+    plotterObject.generateImage(dfArea, title=title, bottomLeft=bottomLeft, topRight=topRight, keyPostcode=formattedPostcode, 
+                                colouringAreaType=colouringAreaType)
+
+    img = plotterObject.getImage()
+
+    if displayPlot :
+        plotterObject.displayPlot()
 
     if savefilelocation != None :
         filename = f'{savefilelocation}/postcodes.pc.{formattedPostcode.replace(" ", "").lower()}.png'

@@ -25,10 +25,7 @@ def plotpostcode(postcode):
     df = pc.readCachedDataFrame()
     img = pc.plotPostcode(df, postcode, displayPlot=False)
 
-    ret, jpeg = cv2.imencode('.jpg', img)
-    response = make_response(jpeg.tobytes())
-    response.headers['Content-Type'] = 'image/png'
-    return response
+    return imageResponse(img)
 
 @app.route('/plotarea/<postcodearea>')
 def plotarea(postcodearea):
@@ -36,10 +33,7 @@ def plotarea(postcodearea):
     df = pc.readCachedDataFrame()
     img = pc.plotPostcodeArea(df, postcodearea, displayPlot=False)
 
-    ret, jpeg = cv2.imencode('.jpg', img)
-    response = make_response(jpeg.tobytes())
-    response.headers['Content-Type'] = 'image/png'
-    return response
+    return imageResponse(img)
 
 @app.route('/plotgridsquare/<gridsquare>')
 def plotgridsquare(gridsquare):
@@ -47,10 +41,7 @@ def plotgridsquare(gridsquare):
     df = pc.readCachedDataFrame()
     img = pc.plotGridSquare(df, gridsquare, displayPlot=False)
 
-    ret, jpeg = cv2.imencode('.jpg', img)
-    response = make_response(jpeg.tobytes())
-    response.headers['Content-Type'] = 'image/png'
-    return response
+    return imageResponse(img)
 
 @app.route('/plotallGB')
 def plotallGB():
@@ -58,6 +49,9 @@ def plotallGB():
     df = pc.readCachedDataFrame()
     img = pc.plotAllGB(df, displayPlot=False)
 
+    return imageResponse(img)
+
+def imageResponse(img) :
     ret, jpeg = cv2.imencode('.jpg', img)
     response = make_response(jpeg.tobytes())
     response.headers['Content-Type'] = 'image/png'

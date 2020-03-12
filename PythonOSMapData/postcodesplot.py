@@ -375,7 +375,8 @@ class CV2PostcodesPlotter(postcodesPlotter) :
         cv2.destroyAllWindows()
 
     def getImage(self) :
-        return self.convertToBGR(self.img)      # Why need to do convert ????
+        return self.img
+        #return self.convertToBGR(self.img)      # Why need to do convert ????
 
     def _drawPostcode(self, index, es, ns, pc, area, rgbColour) :
         #circle radius = 0 == single pixel. 

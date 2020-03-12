@@ -224,8 +224,8 @@ def printFullGrid(a) :
     print(a[::-1,:])
 
 # Diagnostics - plot national grid array 
-def displayNationalGridPlot() :
-    import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
+def prepareNationalGridPlot() :
     fig, ax = plt.subplots(figsize=(6, 8))
 
     # Plot using a 100x100 scaled up version of the array so that we can show the axis tick points as being at
@@ -259,13 +259,35 @@ def displayNationalGridPlot() :
     ax.set_yticklabels(ytickLabels)
 
     plt.grid(True, color="gray", linewidth=1, linestyle="solid")
-    im = ax.imshow(a, origin='lower')    
     plt.title("National Grid Squares")
+    im = ax.imshow(a, origin='lower')    
+
+    return fig, ax
+
+def displayPlot(fix, ax) :
     plt.show()
+
+def getNationalGridAsNumpyImage() :
+    fig, ax = prepareNationalGridPlot()
+
+    # See https://stackoverflow.com/questions/35355930/matplotlib-figure-to-image-as-a-numpy-array
+    #ax.axis('off')
+    fig.tight_layout(pad=10)
+
+    # To remove the huge white borders
+    ax.margins(0)
+
+    fig.canvas.draw()
+    image_from_plot = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    image_from_plot = image_from_plot.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return image_from_plot
 
 # 'main' handling - show the national grid as a plot
 if __name__ == "__main__" :
-    displayNationalGridPlot()
+    fig, ax = prepareNationalGridPlot()
+    displayPlot(fig, ax)
+    #npimg = getNationalGridAsNumpyImage(fig, ax)
+    #print(npimg.shape)
 
 # ===========================================================================
 # ===========================================================================

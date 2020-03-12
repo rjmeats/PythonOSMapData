@@ -8,6 +8,14 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
+df = None
+
+@app.before_first_request
+def before_first_request_func():
+    print('First request')
+    global df
+    df = pc.readCachedDataFrame()
+    
 @app.route('/')
 def index():
     user_agent = request.headers.get('User-Agent')
@@ -16,13 +24,14 @@ def index():
 import io
 import base64
 import postcodes as pc
+import nationalgrid as ng
 from cv2 import cv2
 from flask import jsonify, make_response
 
 @app.route('/plotpostcode/<postcode>')
 def plotpostcode(postcode):
 
-    df = pc.readCachedDataFrame()
+    #df = pc.readCachedDataFrame()
     img = pc.plotPostcode(df, postcode, displayPlot=False)
 
     return imageResponse(img)
@@ -30,7 +39,7 @@ def plotpostcode(postcode):
 @app.route('/plotarea/<postcodearea>')
 def plotarea(postcodearea):
 
-    df = pc.readCachedDataFrame()
+    #df = pc.readCachedDataFrame()
     img = pc.plotPostcodeArea(df, postcodearea, displayPlot=False)
 
     return imageResponse(img)
@@ -38,7 +47,7 @@ def plotarea(postcodearea):
 @app.route('/plotgridsquare/<gridsquare>')
 def plotgridsquare(gridsquare):
 
-    df = pc.readCachedDataFrame()
+    #df = pc.readCachedDataFrame()
     img = pc.plotGridSquare(df, gridsquare, displayPlot=False)
 
     return imageResponse(img)
@@ -46,13 +55,19 @@ def plotgridsquare(gridsquare):
 @app.route('/plotallGB')
 def plotallGB():
 
-    df = pc.readCachedDataFrame()
+    #df = pc.readCachedDataFrame()
     img = pc.plotAllGB(df, displayPlot=False)
 
     return imageResponse(img)
 
+@app.route('/plotgrid')
+def plotgrid():
+
+    img = ng.getNationalGridAsNumpyImage()
+    return imageResponse(img)
+
 def imageResponse(img) :
-    ret, jpeg = cv2.imencode('.jpg', img)
+    ret, jpeg = cv2.imencode('.jpg', img[:,:,::-1])
     response = make_response(jpeg.tobytes())
     response.headers['Content-Type'] = 'image/png'
     return response

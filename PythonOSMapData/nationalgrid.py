@@ -267,12 +267,10 @@ def prepareNationalGridPlot() :
 def displayPlot(fix, ax) :
     plt.show()
 
-def getNationalGridAsNumpyImage() :
-    fig, ax = prepareNationalGridPlot()
-
+def getMatplotLibAsNumpyImage(fig, ax) :
     # See https://stackoverflow.com/questions/35355930/matplotlib-figure-to-image-as-a-numpy-array
     #ax.axis('off')
-    fig.tight_layout(pad=10)
+    fig.tight_layout(pad=2)
 
     # To remove the huge white borders
     ax.margins(0)

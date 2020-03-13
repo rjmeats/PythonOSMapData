@@ -46,7 +46,7 @@ import altitudestats
 # Parameters indicate the area to be processed, in terms of:
 # - the name of a 100x100 or 10x10 square to form the south-west corner
 # - the number of squares east and north of this to also include, as a string "nnxmm"
-def main(basisSquareName, dimensions, colourSchemeName) :
+def main(basisSquareName, dimensions, colourSchemeName, displayPlot=True, savePlot=True) :
 
     # When dumping out numpy arrays for diagnostics, use a wider screen than the default (only 75 chars)
     np.set_printoptions(linewidth=200)
@@ -108,30 +108,38 @@ def main(basisSquareName, dimensions, colourSchemeName) :
             plt.figure(figsize=(16, 8))
             plt.subplot(211)
 
-        altitudestats.analyseAltitudes(colourScheme, title, aAllAltitudes)
-        if useSeparatePlotWindows :
-            plt.figure(figsize=(16, 8))
-            plt.figure(2)
-        else :
-            plt.subplot(212)
+        if displayPlot :
+            altitudestats.analyseAltitudes(colourScheme, title, aAllAltitudes)
+            if useSeparatePlotWindows :
+                plt.figure(figsize=(16, 8))
+                plt.figure(2)
+            else :
+                plt.subplot(212)
 
-        generatePlot(colourScheme, title, aAllAltitudes, s, summaryDict['minAltitude'], summaryDict['maxAltitude'])
-        startTime = time.time()
-        if colourSchemeName == "standard" :
-            pngName = title.replace(" ", "_") + ".png"
-        else :
-            pngName = title.replace(" ", "_") + "_" + colourSchemeName + ".png"
+        fig, ax = generatePlot(colourScheme, title, aAllAltitudes, s, summaryDict['minAltitude'], summaryDict['maxAltitude'])
 
-        pngName = "pngs/" + pngName
-        plt.savefig(pngName, dpi=600, bbox_inches='tight', pad_inches = 0)        # NB Still leaves some white space around edge ????
-        print("Generated file", pngName, " in", round(time.time() - startTime, 3), "seconds")
-        plt.show()
+        if savePlot :
+            startTime = time.time()
+            if colourSchemeName == "standard" :
+                pngName = title.replace(" ", "_") + ".png"
+            else :
+                pngName = title.replace(" ", "_") + "_" + colourSchemeName + ".png"
+
+            pngName = "pngs/" + pngName
+            plt.savefig(pngName, dpi=600, bbox_inches='tight', pad_inches = 0)        # NB Still leaves some white space around edge ????
+            print("Generated file", pngName, " in", round(time.time() - startTime, 3), "seconds")
+
+        if displayPlot :
+            plt.show()
+
+        return True, fig, ax
 
     elif summaryDict['status'] == "sea" :
         print("No GB land covered by this area")
+        return False, 'dummy', 'dummy'
     else :
         print("Something went wrong!")
-
+        return False, 'dummy', 'dummy'
 
 # From the parameters, work out the identity of the 10x10 square which will be at the south-west corner of our plot 
 def areaToMapFromParameters(basisSquareName, dimensions) :
@@ -310,11 +318,13 @@ def generatePlot(colourScheme, title, a, s, minAltitude, maxAltitude) :
             avrgb[row,col] = rgb #[0]
 
     print("Prepared plot after:", time.time() - startTime)
-    fig = plt.imshow(avrgb, origin='lower')
+    plt.imshow(avrgb, origin='lower')
     print("Loaded plot after:", time.time() - startTime)
     plt.axis('off')
     plt.title(title)
 
+    fig, ax = plt.gcf(), plt.gca()
+    return fig, ax
 
 ######################################################
 ###
@@ -331,4 +341,9 @@ if __name__ == "__main__" :
     dimensionsArg = sys.argv[2] if len(sys.argv) > 2 else ""
     colourSchemeArg = sys.argv[3] if len(sys.argv) > 3 else ""
 
-    main(targetArg, dimensionsArg, colourSchemeArg)
+    ok, fig, ax = main(targetArg, dimensionsArg, colourSchemeArg, displayPlot=True)
+
+    if ok :
+        print(fig)
+        print()
+        print(ax)

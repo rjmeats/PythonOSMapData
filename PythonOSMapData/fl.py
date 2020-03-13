@@ -25,6 +25,8 @@ import io
 import base64
 import postcodes as pc
 import nationalgrid as ng
+import altitudeplot as alp
+
 from cv2 import cv2
 from flask import jsonify, make_response
 
@@ -60,11 +62,29 @@ def plotallGB():
 
     return imageResponse(img)
 
+import matplotlib.pyplot as plt
 @app.route('/plotgrid')
 def plotgrid():
-
-    img = ng.getNationalGridAsNumpyImage()
+    fig, ax = ng.prepareNationalGridPlot()
+    img = ng.getMatplotLibAsNumpyImage(fig, ax)
+    plt.clf()
+    plt.cla()
+    plt.close()
     return imageResponse(img)
+
+
+@app.route('/plotaltitude/<gridsquare>')
+def plotaltitude(gridsquare):
+    ok, fig, ax = alp.main(gridsquare, '', '', displayPlot=False, savePlot=False)
+    if ok :
+        print('Preparing altitude image ...')
+        img = ng.getMatplotLibAsNumpyImage(fig, ax)
+        plt.clf()
+        plt.cla()
+        plt.close()
+        return imageResponse(img)
+    else :
+        return 'Error'
 
 def imageResponse(img) :
     ret, jpeg = cv2.imencode('.jpg', img[:,:,::-1])

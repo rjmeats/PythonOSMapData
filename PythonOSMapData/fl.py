@@ -1,8 +1,16 @@
 # Basic flask plotting trial
+
+# Postcode plots
 # http://localhost:5000/plotpostcode/NG2%206AG
 # http://localhost:5000/plotarea/DN
 # http://localhost:5000/plotgridsquare/TQ
 # http://localhost:5000/plotallGB
+
+# Basic nationgrid squares layout
+#http://localhost:5000/plotgrid
+
+# Altitude shaded plot
+# http://localhost:5000/plotaltitude/TQ00
 
 from flask import Flask, request
 
